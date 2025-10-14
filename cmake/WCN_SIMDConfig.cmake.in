@@ -1,0 +1,5 @@
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/WCN_SIMDTargets.cmake")
+
+check_required_components(WCN_SIMD)

@@ -1,0 +1,58 @@
+# clangd configuration for WCN_SIMD
+# See: https://clangd.llvm.org/config
+
+CompileFlags:
+  # Add extra warnings
+  Add:
+    - -Wall
+    - -Wextra
+    - -Wpedantic
+    - -Wno-unused-parameter
+  
+  # Remove problematic flags for clangd
+  Remove:
+    # GCC-specific flags that clang doesn't understand
+    - -march=native
+    - -mfpu=*
+    - -mfloat-abi=*
+
+# Diagnostics configuration
+Diagnostics:
+  # Show errors from all included headers
+  UnusedIncludes: None
+  
+  # Suppress certain warnings
+  Suppress:
+    - unused-parameter
+    - sign-compare
+  
+  ClangTidy:
+    Add:
+      - performance-*
+      - bugprone-*
+      - readability-*
+    Remove:
+      - readability-magic-numbers
+      - readability-isolate-declaration
+      - bugprone-easily-swappable-parameters
+
+# Index configuration
+Index:
+  Background: Build
+  StandardLibrary: Yes
+
+# Completion
+Completion:
+  AllScopes: Yes
+
+# Hover information
+Hover:
+  ShowAKA: Yes
+
+# InlayHints (function parameter names, type hints, etc.)
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+  Designators: Yes
+
