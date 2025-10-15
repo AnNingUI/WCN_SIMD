@@ -1,4 +1,4 @@
-import { createWcnSimd } from './wcn_simd.js';
+import { createWcnSimd } from "./wcn_simd.js";
 
 function nowNs() {
   return process.hrtime.bigint();
@@ -17,15 +17,15 @@ const simd = await createWcnSimd();
 await simd.init();
 
 // 小规模功能演示
-console.log('sum (small):', simd.reduceSumF32([1,2,3,4]));                    // 10
-console.log('dot (small):', simd.dotProductF32([1,2,3], [4,5,6]));            // 32
-console.log('add (small):', simd.addArrayF32([1,2], [3,4]));                  // [4,6]
-console.log('mul (small):', simd.mulArrayF32([2,3], [4,5]));                  // [8,15]
-console.log('scale (small):', simd.scaleArrayF32([1,2,3], 0.5));              // [0.5,1,1.5]
-console.log('fmadd (small):', simd.fmaddArrayF32([1,2],[3,4],[5,6]));         // [8,14]
-console.log('max (small):', simd.reduceMaxF32([1,9,3,7]));                    // 9
-console.log('min (small):', simd.reduceMinF32([1,9,3,7]));                    // 1
-console.log('features:', simd.getFeatures());
+console.log("sum (small):", simd.reduceSumF32([1, 2, 3, 4])); // 10
+console.log("dot (small):", simd.dotProductF32([1, 2, 3], [4, 5, 6])); // 32
+console.log("add (small):", simd.addArrayF32([1, 2], [3, 4])); // [4,6]
+console.log("mul (small):", simd.mulArrayF32([2, 3], [4, 5])); // [8,15]
+console.log("scale (small):", simd.scaleArrayF32([1, 2, 3], 0.5)); // [0.5,1,1.5]
+console.log("fmadd (small):", simd.fmaddArrayF32([1, 2], [3, 4], [5, 6])); // [8,14]
+console.log("max (small):", simd.reduceMaxF32([1, 9, 3, 7])); // 9
+console.log("min (small):", simd.reduceMinF32([1, 9, 3, 7])); // 1
+// console.log('features:', simd.getFeatures());
 
 // 大数组基准对比
 const N = 1_000_000; // 100万元素，约4MB，适配当前内存页数
@@ -48,9 +48,11 @@ const wasmSum = bench(() => simd.reduceSumF32(a));
 // 对比结果
 const expectedSum = N;
 const eps = 1e-3;
-const okSum = Math.abs(wasmSum.res - expectedSum) <= eps && Math.abs(jsSum.res - expectedSum) <= eps;
+const okSum =
+  Math.abs(wasmSum.res - expectedSum) <= eps &&
+  Math.abs(jsSum.res - expectedSum) <= eps;
 
-console.log('\n== Reduce Sum F32 (N=1,000,000) ==');
+console.log("\n== Reduce Sum F32 (N=1,000,000) ==");
 console.log(`JS:   ${jsSum.res} in ${jsSum.ms.toFixed(2)} ms`);
 console.log(`Wasm: ${wasmSum.res} in ${wasmSum.ms.toFixed(2)} ms`);
 console.log(`Speedup: ${(jsSum.ms / wasmSum.ms).toFixed(2)}x`);
@@ -67,9 +69,11 @@ const jsDot = bench(() => {
 const wasmDot = bench(() => simd.dotProductF32(a, b));
 
 const expectedDot = N;
-const okDot = Math.abs(wasmDot.res - expectedDot) <= eps && Math.abs(jsDot.res - expectedDot) <= eps;
+const okDot =
+  Math.abs(wasmDot.res - expectedDot) <= eps &&
+  Math.abs(jsDot.res - expectedDot) <= eps;
 
-console.log('\n== Dot Product F32 (N=1,000,000) ==');
+console.log("\n== Dot Product F32 (N=1,000,000) ==");
 console.log(`JS:   ${jsDot.res} in ${jsDot.ms.toFixed(2)} ms`);
 console.log(`Wasm: ${wasmDot.res} in ${wasmDot.ms.toFixed(2)} ms`);
 console.log(`Speedup: ${(jsDot.ms / wasmDot.ms).toFixed(2)}x`);

@@ -49,18 +49,21 @@ export async function createWcnSimd(options = {}) {
   /** @type {WebAssembly.Imports} */
   const imports = mergeImports(defaultImports, extraImports);
 
-  const { fileURLToPath } = await import('node:url');
-  const pathMod = await import('node:path');
-  const fs = await import('node:fs/promises');
+  const { fileURLToPath } = await import("node:url");
+  const pathMod = await import("node:path");
+  const fs = await import("node:fs/promises");
 
   // Resolve wasm bytes
   let bytes;
   if (wasmBytes) {
-    bytes = wasmBytes instanceof Uint8Array ? wasmBytes : new Uint8Array(wasmBytes);
+    bytes =
+      wasmBytes instanceof Uint8Array ? wasmBytes : new Uint8Array(wasmBytes);
   } else {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = pathMod.dirname(__filename);
-    const resolvedPath = wasmPath ? resolveMaybeRelative(__dirname, wasmPath, pathMod) : pathMod.join(__dirname, 'WCN_SIMD.wasm');
+    const resolvedPath = wasmPath
+      ? resolveMaybeRelative(__dirname, wasmPath, pathMod)
+      : pathMod.join(__dirname, "WCN_SIMD.wasm");
     bytes = await fs.readFile(resolvedPath);
   }
 
@@ -70,11 +73,11 @@ export async function createWcnSimd(options = {}) {
   /** @type {WcnSimdExports} */
   const exp = /** @type {any} */ (instance.exports);
 
-  ensureExport(exp, 'memory', 'object');
-  ensureExport(exp, 'wcn_simd_init', 'function');
-  ensureExport(exp, 'wcn_simd_reduce_sum_f32', 'function');
-  ensureExport(exp, 'wcn_alloc', 'function');
-  ensureExport(exp, 'wcn_free', 'function');
+  ensureExport(exp, "memory", "object");
+  ensureExport(exp, "wcn_simd_init", "function");
+  ensureExport(exp, "wcn_simd_reduce_sum_f32", "function");
+  ensureExport(exp, "wcn_alloc", "function");
+  ensureExport(exp, "wcn_free", "function");
   // Optional exports (checked at call time)
   // wcn_simd_* helpers may be absent on non-supported builds; wrappers will validate before calling.
 
@@ -87,7 +90,7 @@ export async function createWcnSimd(options = {}) {
     const src = Array.isArray(data) ? new Float32Array(data) : data;
     const bytes = src.byteLength;
     const ptr = exp.wcn_alloc(bytes);
-    if (!ptr) throw new Error('wcn_alloc failed');
+    if (!ptr) throw new Error("wcn_alloc failed");
     const view = new Float32Array(exp.memory.buffer, ptr, src.length);
     view.set(src);
     return { ptr, len: src.length, view, free: () => exp.wcn_free(ptr) };
@@ -129,16 +132,18 @@ export async function createWcnSimd(options = {}) {
     dotProductF32(a, b) {
       const aArr = Array.isArray(a) ? new Float32Array(a) : a;
       const bArr = Array.isArray(b) ? new Float32Array(b) : b;
-      if (aArr.length !== bArr.length) throw new Error('dotProductF32: length mismatch');
-      if (typeof exp.wcn_simd_dot_product_f32 !== 'function') {
-        throw new Error('wcn_simd_dot_product_f32 not exported');
+      if (aArr.length !== bArr.length)
+        throw new Error("dotProductF32: length mismatch");
+      if (typeof exp.wcn_simd_dot_product_f32 !== "function") {
+        throw new Error("wcn_simd_dot_product_f32 not exported");
       }
       const A = allocF32(aArr);
       const B = allocF32(bArr);
       try {
         return exp.wcn_simd_dot_product_f32(A.ptr, B.ptr, A.len);
       } finally {
-        A.free(); B.free();
+        A.free();
+        B.free();
       }
     },
 
@@ -151,15 +156,20 @@ export async function createWcnSimd(options = {}) {
     addArrayF32(a, b) {
       const aArr = Array.isArray(a) ? new Float32Array(a) : a;
       const bArr = Array.isArray(b) ? new Float32Array(b) : b;
-      if (aArr.length !== bArr.length) throw new Error('addArrayF32: length mismatch');
-      if (typeof exp.wcn_simd_add_array_f32 !== 'function') {
-        throw new Error('wcn_simd_add_array_f32 not exported');
+      if (aArr.length !== bArr.length)
+        throw new Error("addArrayF32: length mismatch");
+      if (typeof exp.wcn_simd_add_array_f32 !== "function") {
+        throw new Error("wcn_simd_add_array_f32 not exported");
       }
       const A = allocF32(aArr);
       const B = allocF32(bArr);
       const bytes = aArr.byteLength;
       const outPtr = exp.wcn_alloc(bytes);
-      if (!outPtr) { A.free(); B.free(); throw new Error('wcn_alloc failed'); }
+      if (!outPtr) {
+        A.free();
+        B.free();
+        throw new Error("wcn_alloc failed");
+      }
       try {
         exp.wcn_simd_add_array_f32(A.ptr, B.ptr, outPtr, aArr.length);
         // Copy back
@@ -167,7 +177,9 @@ export async function createWcnSimd(options = {}) {
         out.set(new Float32Array(exp.memory.buffer, outPtr, out.length));
         return out;
       } finally {
-        exp.wcn_free(outPtr); A.free(); B.free();
+        exp.wcn_free(outPtr);
+        A.free();
+        B.free();
       }
     },
 
@@ -180,22 +192,29 @@ export async function createWcnSimd(options = {}) {
     mulArrayF32(a, b) {
       const aArr = Array.isArray(a) ? new Float32Array(a) : a;
       const bArr = Array.isArray(b) ? new Float32Array(b) : b;
-      if (aArr.length !== bArr.length) throw new Error('mulArrayF32: length mismatch');
-      if (typeof exp.wcn_simd_mul_array_f32 !== 'function') {
-        throw new Error('wcn_simd_mul_array_f32 not exported');
+      if (aArr.length !== bArr.length)
+        throw new Error("mulArrayF32: length mismatch");
+      if (typeof exp.wcn_simd_mul_array_f32 !== "function") {
+        throw new Error("wcn_simd_mul_array_f32 not exported");
       }
       const A = allocF32(aArr);
       const B = allocF32(bArr);
       const bytes = aArr.byteLength;
       const outPtr = exp.wcn_alloc(bytes);
-      if (!outPtr) { A.free(); B.free(); throw new Error('wcn_alloc failed'); }
+      if (!outPtr) {
+        A.free();
+        B.free();
+        throw new Error("wcn_alloc failed");
+      }
       try {
         exp.wcn_simd_mul_array_f32(A.ptr, B.ptr, outPtr, aArr.length);
         const out = new Float32Array(aArr.length);
         out.set(new Float32Array(exp.memory.buffer, outPtr, out.length));
         return out;
       } finally {
-        exp.wcn_free(outPtr); A.free(); B.free();
+        exp.wcn_free(outPtr);
+        A.free();
+        B.free();
       }
     },
 
@@ -207,20 +226,24 @@ export async function createWcnSimd(options = {}) {
      */
     scaleArrayF32(a, scalar) {
       const aArr = Array.isArray(a) ? new Float32Array(a) : a;
-      if (typeof exp.wcn_simd_scale_array_f32 !== 'function') {
-        throw new Error('wcn_simd_scale_array_f32 not exported');
+      if (typeof exp.wcn_simd_scale_array_f32 !== "function") {
+        throw new Error("wcn_simd_scale_array_f32 not exported");
       }
       const A = allocF32(aArr);
       const bytes = aArr.byteLength;
       const outPtr = exp.wcn_alloc(bytes);
-      if (!outPtr) { A.free(); throw new Error('wcn_alloc failed'); }
+      if (!outPtr) {
+        A.free();
+        throw new Error("wcn_alloc failed");
+      }
       try {
         exp.wcn_simd_scale_array_f32(A.ptr, scalar, outPtr, aArr.length);
         const out = new Float32Array(aArr.length);
         out.set(new Float32Array(exp.memory.buffer, outPtr, out.length));
         return out;
       } finally {
-        exp.wcn_free(outPtr); A.free();
+        exp.wcn_free(outPtr);
+        A.free();
       }
     },
 
@@ -235,9 +258,10 @@ export async function createWcnSimd(options = {}) {
       const aArr = Array.isArray(a) ? new Float32Array(a) : a;
       const bArr = Array.isArray(b) ? new Float32Array(b) : b;
       const cArr = Array.isArray(c) ? new Float32Array(c) : c;
-      if (aArr.length !== bArr.length || aArr.length !== cArr.length) throw new Error('fmaddArrayF32: length mismatch');
-      if (typeof exp.wcn_simd_fmadd_array_f32 !== 'function') {
-        throw new Error('wcn_simd_fmadd_array_f32 not exported');
+      if (aArr.length !== bArr.length || aArr.length !== cArr.length)
+        throw new Error("fmaddArrayF32: length mismatch");
+      if (typeof exp.wcn_simd_fmadd_array_f32 !== "function") {
+        throw new Error("wcn_simd_fmadd_array_f32 not exported");
       }
       const A = allocF32(aArr);
       const B = allocF32(bArr);
@@ -249,7 +273,9 @@ export async function createWcnSimd(options = {}) {
         out.set(new Float32Array(exp.memory.buffer, C.ptr, out.length));
         return out;
       } finally {
-        A.free(); B.free(); C.free();
+        A.free();
+        B.free();
+        C.free();
       }
     },
 
@@ -259,8 +285,8 @@ export async function createWcnSimd(options = {}) {
      * @returns {number}
      */
     reduceMaxF32(data) {
-      if (typeof exp.wcn_simd_reduce_max_f32 !== 'function') {
-        throw new Error('wcn_simd_reduce_max_f32 not exported');
+      if (typeof exp.wcn_simd_reduce_max_f32 !== "function") {
+        throw new Error("wcn_simd_reduce_max_f32 not exported");
       }
       const blk = allocF32(Array.isArray(data) ? new Float32Array(data) : data);
       try {
@@ -276,8 +302,8 @@ export async function createWcnSimd(options = {}) {
      * @returns {number}
      */
     reduceMinF32(data) {
-      if (typeof exp.wcn_simd_reduce_min_f32 !== 'function') {
-        throw new Error('wcn_simd_reduce_min_f32 not exported');
+      if (typeof exp.wcn_simd_reduce_min_f32 !== "function") {
+        throw new Error("wcn_simd_reduce_min_f32 not exported");
       }
       const blk = allocF32(Array.isArray(data) ? new Float32Array(data) : data);
       try {
@@ -292,28 +318,44 @@ export async function createWcnSimd(options = {}) {
      * @returns {{[k: string]: number|boolean}}
      */
     getFeatures() {
-      if (typeof exp.wcn_simd_get_features !== 'function') {
-        throw new Error('wcn_simd_get_features not exported');
+      if (typeof exp.wcn_simd_get_features !== "function") {
+        throw new Error("wcn_simd_get_features not exported");
       }
       const ptr = exp.wcn_simd_get_features();
-      if (!ptr) throw new Error('wcn_simd_get_features returned null');
+      if (!ptr) throw new Error("wcn_simd_get_features returned null");
       // Layout per include/WCN_SIMD.h order (25 int fields)
       const names = [
-        'has_sse2','has_sse3','has_ssse3','has_sse4_1','has_sse4_2','has_avx','has_avx2',
-        'has_avx512f','has_avx512bw','has_avx512dq','has_avx512vl','has_fma',
-        'has_neon','has_sve','has_sve2',
-        'has_lsx','has_lasx',
-        'has_rvv',
-        'has_altivec','has_vsx',
-        'has_msa',
-        'has_wasm_simd128',
-        'has_atomic_operations','has_gcc_atomic','has_msvc_atomic'
+        "has_sse2",
+        "has_sse3",
+        "has_ssse3",
+        "has_sse4_1",
+        "has_sse4_2",
+        "has_avx",
+        "has_avx2",
+        "has_avx512f",
+        "has_avx512bw",
+        "has_avx512dq",
+        "has_avx512vl",
+        "has_fma",
+        "has_neon",
+        "has_sve",
+        "has_sve2",
+        "has_lsx",
+        "has_lasx",
+        "has_rvv",
+        "has_altivec",
+        "has_vsx",
+        "has_msa",
+        "has_wasm_simd128",
+        "has_atomic_operations",
+        "has_gcc_atomic",
+        "has_msvc_atomic",
       ];
       const view = new Int32Array(exp.memory.buffer, ptr, names.length);
       /** @type {Record<string, boolean|number>} */
       const out = {};
       for (let i = 0; i < names.length; i++) {
-        const v = view[i]|0;
+        const v = view[i] | 0;
         out[names[i]] = v !== 0;
       }
       return out;
@@ -322,7 +364,7 @@ export async function createWcnSimd(options = {}) {
     dispose() {
       // No explicit finalization required; this helper just releases references for GC.
       // Users can drop the returned api object to allow GC of instance/module.
-    }
+    },
   };
 
   return api;
@@ -350,7 +392,9 @@ function mergeImports(a, b) {
 function ensureExport(exp, name, kind) {
   if (typeof exp[name] !== kind) {
     const names = Object.keys(exp);
-    throw new Error(`Required export '${name}' (${kind}) not found. Available: ${names.join(', ')}`);
+    throw new Error(
+      `Required export '${name}' (${kind}) not found. Available: ${names.join(", ")}`,
+    );
   }
 }
 
@@ -360,10 +404,10 @@ function ensureExport(exp, name, kind) {
  * @param {typeof import('node:path')} path
  */
 function resolveMaybeRelative(baseDir, p, path) {
-  if (p.startsWith('file://')) return fileURLToPath(p);
+  if (p.startsWith("file://")) return fileURLToPath(p);
   if (path.isAbsolute(p)) return p;
   return path.join(baseDir, p);
 }
 
 // Helper to support file:// paths on resolve
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath } from "node:url";
