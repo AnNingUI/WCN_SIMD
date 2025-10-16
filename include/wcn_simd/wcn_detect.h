@@ -26,6 +26,11 @@
         #define WCN_X86_AVX2 1
     #endif
     
+    /* FMA */
+    #if defined(__FMA__)
+        #define WCN_X86_FMA 1
+    #endif
+    
     /* AVX */
     #if defined(__AVX__)
         #define WCN_X86_AVX 1
@@ -172,7 +177,7 @@
 
 /* Select Best Available SIMD Implementation */
 #if defined(WCN_X86_AVX512F)
-    #define WCN_SIMD_IMPL "x86_avx512"
+    #define WCN_SIMD_IMPL "x86_avx512f"
     #define WCN_VECTOR_WIDTH 512
 #elif defined(WCN_X86_AVX2)
     #define WCN_SIMD_IMPL "x86_avx2"
@@ -180,8 +185,20 @@
 #elif defined(WCN_X86_AVX)
     #define WCN_SIMD_IMPL "x86_avx"
     #define WCN_VECTOR_WIDTH 256
+#elif defined(WCN_X86_FMA)
+    #define WCN_SIMD_IMPL "x86_fma"
+    #define WCN_VECTOR_WIDTH 128
 #elif defined(WCN_X86_SSE4_2)
     #define WCN_SIMD_IMPL "x86_sse4_2"
+    #define WCN_VECTOR_WIDTH 128
+#elif defined(WCN_X86_SSE4_1)
+    #define WCN_SIMD_IMPL "x86_sse4_1"
+    #define WCN_VECTOR_WIDTH 128
+#elif defined(WCN_X86_SSSE3)
+    #define WCN_SIMD_IMPL "x86_ssse3"
+    #define WCN_VECTOR_WIDTH 128
+#elif defined(WCN_X86_SSE3)
+    #define WCN_SIMD_IMPL "x86_sse3"
     #define WCN_VECTOR_WIDTH 128
 #elif defined(WCN_X86_SSE2)
     #define WCN_SIMD_IMPL "x86_sse2"

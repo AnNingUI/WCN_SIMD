@@ -30,7 +30,7 @@ foreach ($arg in $args) {
         # Build standalone Wasm module (no JS glue)
         $BUILD_TARGET = "WCN_SIMD_wasm_module"
         $BUILD_ALL = 0
-        $EXTRA_CMAKE_FLAGS = "-DBUILD_WASM_MODULE=ON"
+        $EXTRA_CMAKE_FLAGS = "-DBUILD_WASM_MODULE=ON -DCMAKE_C_FLAGS='-sEXPORT_ALL=1"
     }
 }
 
@@ -70,7 +70,8 @@ foreach ($line in $emccVersion) {
 }
 if ($BUILD_ALL -eq 1) {
     Write-Host "  Target: all (includes examples)"
-} else {
+}
+else {
     Write-Host "  Target: $BUILD_TARGET (examples skipped)"
 }
 if ($EXTRA_CMAKE_FLAGS -ne "") {
@@ -81,7 +82,8 @@ Write-Host ""
 # Create build directory
 if (Test-Path $BUILD_DIR) {
     Write-Host "Using existing build directory: $BUILD_DIR"
-} else {
+}
+else {
     Write-Host "Creating build directory: $BUILD_DIR"
     New-Item -Path $BUILD_DIR -ItemType Directory | Out-Null
 }
@@ -103,7 +105,8 @@ Write-Host ""
 Write-Host "Building project for WebAssembly..."
 if ($BUILD_ALL -eq 1) {
     $buildResult = cmake --build .
-} else {
+}
+else {
     $buildResult = cmake --build . --target $BUILD_TARGET
 }
 if ($LASTEXITCODE -ne 0) {
