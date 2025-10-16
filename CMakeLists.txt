@@ -30,6 +30,11 @@ set(SRC_FILES
     ${SRC_DIR}/wcn_atomic.c
 )
 
+# Add WebAssembly-specific export wrappers when building for Emscripten
+if(EMSCRIPTEN)
+    list(APPEND SRC_FILES ${SRC_DIR}/wcn_simd_wasm_exports.c)
+endif()
+
 # Create library
 add_library(${PROJECT_NAME} STATIC ${SRC_FILES})
 
@@ -150,7 +155,10 @@ if(EMSCRIPTEN AND BUILD_WASM_MODULE)
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     add_custom_command(
         OUTPUT "${CMAKE_BINARY_DIR}/bin/WCN_SIMD.wasm"
-        COMMAND ${CMAKE_C_COMPILER} ${SRC_FILES}
+        COMMAND ${CMAKE_C_COMPILER}
+                ${SRC_DIR}/wcn_simd.c
+                ${SRC_DIR}/wcn_atomic.c
+                ${SRC_DIR}/wcn_simd_wasm_exports.c
                 -I "${INCLUDE_DIR}"
                 -O3
                 -sSTANDALONE_WASM=1
