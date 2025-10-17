@@ -142,7 +142,7 @@ if(EMSCRIPTEN)
         set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_OPTIONS "${CURRENT_OPTIONS}")
     endif()
     # Add WebAssembly SIMD support
-    target_compile_options(${PROJECT_NAME} PRIVATE -msimd128)
+    target_compile_options(${PROJECT_NAME} PRIVATE -msimd128 -mrelaxed-simd)
 elseif(WASI)
     message(STATUS "Detected WebAssembly (WASI)")
     # Add any WASI-specific compile options here if needed
@@ -165,6 +165,7 @@ if(EMSCRIPTEN AND BUILD_WASM_MODULE)
                 --no-entry
                 -sEXPORT_ALL=1
                 -msimd128
+                -mrelaxed-simd
                 -o "${CMAKE_BINARY_DIR}/bin/WCN_SIMD.wasm"
         DEPENDS ${SRC_FILES}
         COMMENT "Linking standalone Wasm module WCN_SIMD.wasm"

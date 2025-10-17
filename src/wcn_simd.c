@@ -589,6 +589,18 @@ void wcn_simd_scale_array_f32(const float *WCN_RESTRICT a, float scalar,
     *pb++ = *pa++ * scalar;
   }
 }
+// Eg: -mrelaxed-simd
+#if defined(WCN_WASM_SIMD128)
+#if defined(__wasm_relaxed_simd__)
+static inline v128_t wasm_f32x4_qfma(v128_t a, v128_t b, v128_t c) {
+  return __builtin_wasm_relaxed_madd_f32x4(a, b, c);
+}
+#else
+static inline v128_t wasm_f32x4_qfma(v128_t a, v128_t b, v128_t c) {
+  return wasm_f32x4_add(wasm_f32x4_mul(a, b), c);
+}
+#endif
+#endif
 
 WCN_API_EXPORT
 void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
@@ -655,22 +667,23 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
     v128_t v0_0 = wasm_v128_load(pa);
     v128_t v1_0 = wasm_v128_load(pb);
     v128_t v2_0 = wasm_v128_load(pc);
-    wasm_v128_store(pc, wasm_f32x4_add(wasm_f32x4_mul(v0_0, v1_0), v2_0));
 
     v128_t v0_1 = wasm_v128_load(pa + 16);
     v128_t v1_1 = wasm_v128_load(pb + 16);
     v128_t v2_1 = wasm_v128_load(pc + 16);
-    wasm_v128_store(pc + 16, wasm_f32x4_add(wasm_f32x4_mul(v0_1, v1_1), v2_1));
 
     v128_t v0_2 = wasm_v128_load(pa + 32);
     v128_t v1_2 = wasm_v128_load(pb + 32);
     v128_t v2_2 = wasm_v128_load(pc + 32);
-    wasm_v128_store(pc + 32, wasm_f32x4_add(wasm_f32x4_mul(v0_2, v1_2), v2_2));
 
     v128_t v0_3 = wasm_v128_load(pa + 48);
     v128_t v1_3 = wasm_v128_load(pb + 48);
     v128_t v2_3 = wasm_v128_load(pc + 48);
-    wasm_v128_store(pc + 48, wasm_f32x4_add(wasm_f32x4_mul(v0_3, v1_3), v2_3));
+
+    wasm_v128_store(pc, wasm_f32x4_qfma(v0_0, v1_0, v2_0));
+    wasm_v128_store(pc + 16, wasm_f32x4_qfma(v0_1, v1_1, v2_1));
+    wasm_v128_store(pc + 32, wasm_f32x4_qfma(v0_2, v1_2, v2_2));
+    wasm_v128_store(pc + 48, wasm_f32x4_qfma(v0_3, v1_3, v2_3));
 
     pa += 64;
     pb += 64;
@@ -682,22 +695,23 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
     v128_t v0_0 = wasm_v128_load(pa);
     v128_t v1_0 = wasm_v128_load(pb);
     v128_t v2_0 = wasm_v128_load(pc);
-    wasm_v128_store(pc, wasm_f32x4_add(wasm_f32x4_mul(v0_0, v1_0), v2_0));
 
     v128_t v0_1 = wasm_v128_load(pa + 4);
     v128_t v1_1 = wasm_v128_load(pb + 4);
     v128_t v2_1 = wasm_v128_load(pc + 4);
-    wasm_v128_store(pc + 4, wasm_f32x4_add(wasm_f32x4_mul(v0_1, v1_1), v2_1));
 
     v128_t v0_2 = wasm_v128_load(pa + 8);
     v128_t v1_2 = wasm_v128_load(pb + 8);
     v128_t v2_2 = wasm_v128_load(pc + 8);
-    wasm_v128_store(pc + 8, wasm_f32x4_add(wasm_f32x4_mul(v0_2, v1_2), v2_2));
 
     v128_t v0_3 = wasm_v128_load(pa + 12);
     v128_t v1_3 = wasm_v128_load(pb + 12);
     v128_t v2_3 = wasm_v128_load(pc + 12);
-    wasm_v128_store(pc + 12, wasm_f32x4_add(wasm_f32x4_mul(v0_3, v1_3), v2_3));
+
+    wasm_v128_store(pc, wasm_f32x4_qfma(v0_0, v1_0, v2_0));
+    wasm_v128_store(pc + 4, wasm_f32x4_qfma(v0_1, v1_1, v2_1));
+    wasm_v128_store(pc + 8, wasm_f32x4_qfma(v0_2, v1_2, v2_2));
+    wasm_v128_store(pc + 12, wasm_f32x4_qfma(v0_3, v1_3, v2_3));
 
     pa += 16;
     pb += 16;
@@ -709,7 +723,9 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
     v128_t v0 = wasm_v128_load(pa);
     v128_t v1 = wasm_v128_load(pb);
     v128_t v2 = wasm_v128_load(pc);
+
     wasm_v128_store(pc, wasm_f32x4_add(wasm_f32x4_mul(v0, v1), v2));
+
     pa += 4;
     pb += 4;
     pc += 4;
