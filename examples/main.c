@@ -33,7 +33,7 @@ static void aligned_free(void *p) { free(p); }
 #endif
 
 #define ARRAY_SIZE 1000000
-#define ITERATIONS 100
+#define ITERATIONS 10000
 
 void print_features(void) {
   const wcn_simd_features_t *features = wcn_simd_get_features();
@@ -102,8 +102,8 @@ void benchmark_dot_product(void) {
   printf("Iterations: %d\n", ITERATIONS);
 
   /* Warm-up */
-  for (int iter = 0; iter < 10; iter++)
-    wcn_simd_dot_product_f32(a, b, ARRAY_SIZE);
+  // for (int iter = 0; iter < 10; iter++)
+  //   wcn_simd_dot_product_f32(a, b, ARRAY_SIZE);
 
   /* SIMD version */
   double start = now_seconds();
@@ -169,8 +169,8 @@ void benchmark_vector_add(void) {
   printf("Iterations: %d\n", ITERATIONS);
 
   /* Warm-up */
-  for (int iter = 0; iter < 10; iter++)
-    wcn_simd_add_array_f32(a, b, c, ARRAY_SIZE);
+  // for (int iter = 0; iter < 10; iter++)
+  //   wcn_simd_add_array_f32(a, b, c, ARRAY_SIZE);
 
   /* SIMD version */
   double start = now_seconds();

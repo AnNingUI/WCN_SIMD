@@ -620,23 +620,32 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
 #endif
 
   // AVX2 implementation with loop unrolling and prefetching
-#if defined(WCN_X86_AVX2)
+#if defined(WCN_X86_AVX2) || defined(WCN_X86_AVX)
   for (; i + 16 <= count; i += 16) {
-    __builtin_prefetch(pa + 64); // Prefetch next block of 'a'
-    __builtin_prefetch(pb + 64); // Prefetch next block of 'b'
-    __builtin_prefetch(pc + 64); // Prefetch next block of 'c'
+    __builtin_prefetch(pa + 64, 0, 3); // Prefetch for read
+    __builtin_prefetch(pb + 64, 0, 3);
+    __builtin_prefetch(pc + 64, 1, 3); // Prefetch for write
 
-    wcn_v256f_t va0 = wcn_v256f_load(pa);
-    wcn_v256f_t vb0 = wcn_v256f_load(pb);
-    wcn_v256f_t vc0 = wcn_v256f_load(pc);
-    vc0 = wcn_v256f_fmadd(va0, vb0, vc0);
-    wcn_v256f_store(pc, vc0);
+    __m256 va0 = _mm256_load_ps(pa);
+    __m256 vb0 = _mm256_load_ps(pb);
+    __m256 vc0 = _mm256_load_ps(pc);
+#if defined(WCN_X86_AVX)
+    vc0 = _mm256_add_ps(_mm256_mul_ps(va0, vb0), vc0);
+#else
+    vc0 = _mm256_fmadd_ps(va0, vb0, vc0);
+#endif
+    _mm256_store_ps(pc, vc0);
 
-    wcn_v256f_t va1 = wcn_v256f_load(pa + 8);
-    wcn_v256f_t vb1 = wcn_v256f_load(pb + 8);
-    wcn_v256f_t vc1 = wcn_v256f_load(pc + 8);
-    vc1 = wcn_v256f_fmadd(va1, vb1, vc1);
-    wcn_v256f_store(pc + 8, vc1);
+    __m256 va1 = _mm256_load_ps(pa + 8);
+    __m256 vb1 = _mm256_load_ps(pb + 8);
+    __m256 vc1 = _mm256_load_ps(pc + 8);
+    // vc1 = _mm256_fmadd_ps(va1, vb1, vc1);
+#if defined(WCN_X86_AVX)
+    vc1 = _mm256_add_ps(_mm256_mul_ps(va1, vb1), vc1);
+#else
+    vc1 = _mm256_fmadd_ps(va1, vb1, vc1);
+#endif
+    _mm256_store_ps(pc + 8, vc1);
 
     pa += 16;
     pb += 16;
@@ -644,11 +653,16 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
   }
 
   for (; i + 8 <= count; i += 8) {
-    wcn_v256f_t va = wcn_v256f_load(pa);
-    wcn_v256f_t vb = wcn_v256f_load(pb);
-    wcn_v256f_t vc = wcn_v256f_load(pc);
-    vc = wcn_v256f_fmadd(va, vb, vc);
-    wcn_v256f_store(pc, vc);
+    __m256 va = _mm256_load_ps(pa);
+    __m256 vb = _mm256_load_ps(pb);
+    __m256 vc = _mm256_load_ps(pc);
+    // vc = _mm256_fmadd_ps(va, vb, vc);
+#if defined(WCN_X86_AVX)
+    vc = _mm256_add_ps(_mm256_mul_ps(va, vb), vc);
+#else
+    vc = _mm256_fmadd_ps(va, vb, vc);
+#endif
+    _mm256_store_ps(pc, vc);
 
     pa += 8;
     pb += 8;
@@ -733,35 +747,35 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
 #endif
 
   // SSE2 or ARM NEON implementation with loop unrolling
-#if defined(WCN_X86_SSE2) || defined(WCN_ARM_NEON)
+#if defined(WCN_X86_SSE2)
   for (; i + 16 <= count; i += 16) {
     __builtin_prefetch(pa + 64);
     __builtin_prefetch(pb + 64);
     __builtin_prefetch(pc + 64);
 
-    wcn_v128f_t va0 = wcn_v128f_load(pa);
-    wcn_v128f_t vb0 = wcn_v128f_load(pb);
-    wcn_v128f_t vc0 = wcn_v128f_load(pc);
-    vc0 = wcn_v128f_fmadd(va0, vb0, vc0);
-    wcn_v128f_store(pc, vc0);
+    __m128 va0 = _mm_loadu_ps(pa);
+    __m128 vb0 = _mm_loadu_ps(pb);
+    __m128 vc0 = _mm_loadu_ps(pc);
+    vc0 = _mm_add_ps(_mm_mul_ps(va0, vb0), vc0);
+    _mm_store_ps(pc, vc0);
 
-    wcn_v128f_t va1 = wcn_v128f_load(pa + 4);
-    wcn_v128f_t vb1 = wcn_v128f_load(pb + 4);
-    wcn_v128f_t vc1 = wcn_v128f_load(pc + 4);
-    vc1 = wcn_v128f_fmadd(va1, vb1, vc1);
-    wcn_v128f_store(pc + 4, vc1);
+    __m128 va1 = _mm_loadu_ps(pa + 4);
+    __m128 vb1 = _mm_loadu_ps(pb + 4);
+    __m128 vc1 = _mm_loadu_ps(pc + 4);
+    vc1 = _mm_add_ps(_mm_mul_ps(va1, vb1), vc1);
+    _mm_store_ps(pc + 4, vc1);
 
-    wcn_v128f_t va2 = wcn_v128f_load(pa + 8);
-    wcn_v128f_t vb2 = wcn_v128f_load(pb + 8);
-    wcn_v128f_t vc2 = wcn_v128f_load(pc + 8);
-    vc2 = wcn_v128f_fmadd(va2, vb2, vc2);
-    wcn_v128f_store(pc + 8, vc2);
+    __m128 va2 = _mm_loadu_ps(pa + 8);
+    __m128 vb2 = _mm_loadu_ps(pb + 8);
+    __m128 vc2 = _mm_loadu_ps(pc + 8);
+    vc2 = _mm_add_ps(_mm_mul_ps(va2, vb2), vc2);
+    _mm_store_ps(pc + 8, vc2);
 
-    wcn_v128f_t va3 = wcn_v128f_load(pa + 12);
-    wcn_v128f_t vb3 = wcn_v128f_load(pb + 12);
-    wcn_v128f_t vc3 = wcn_v128f_load(pc + 12);
-    vc3 = wcn_v128f_fmadd(va3, vb3, vc3);
-    wcn_v128f_store(pc + 12, vc3);
+    __m128 va3 = _mm_loadu_ps(pa + 12);
+    __m128 vb3 = _mm_loadu_ps(pb + 12);
+    __m128 vc3 = _mm_loadu_ps(pc + 12);
+    vc3 = _mm_add_ps(_mm_mul_ps(va3, vb3), vc3);
+    _mm_store_ps(pc + 12, vc3);
 
     pa += 16;
     pb += 16;
@@ -769,17 +783,17 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
   }
 
   for (; i + 8 <= count; i += 8) {
-    wcn_v128f_t va0 = wcn_v128f_load(pa);
-    wcn_v128f_t vb0 = wcn_v128f_load(pb);
-    wcn_v128f_t vc0 = wcn_v128f_load(pc);
-    vc0 = wcn_v128f_fmadd(va0, vb0, vc0);
-    wcn_v128f_store(pc, vc0);
+    __m128 va0 = _mm_loadu_ps(pa);
+    __m128 vb0 = _mm_loadu_ps(pb);
+    __m128 vc0 = _mm_loadu_ps(pc);
+    vc0 = _mm_add_ps(_mm_mul_ps(va0, vb0), vc0);
+    _mm_store_ps(pc, vc0);
 
-    wcn_v128f_t va1 = wcn_v128f_load(pa + 4);
-    wcn_v128f_t vb1 = wcn_v128f_load(pb + 4);
-    wcn_v128f_t vc1 = wcn_v128f_load(pc + 4);
-    vc1 = wcn_v128f_fmadd(va1, vb1, vc1);
-    wcn_v128f_store(pc + 4, vc1);
+    __m128 va1 = _mm_loadu_ps(pa + 4);
+    __m128 vb1 = _mm_loadu_ps(pb + 4);
+    __m128 vc1 = _mm_loadu_ps(pc + 4);
+    vc1 = _mm_add_ps(_mm_mul_ps(va1, vb1), vc1);
+    _mm_store_ps(pc + 4, vc1);
 
     pa += 8;
     pb += 8;
@@ -787,11 +801,77 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
   }
 
   for (; i + 4 <= count; i += 4) {
-    wcn_v128f_t va = wcn_v128f_load(pa);
-    wcn_v128f_t vb = wcn_v128f_load(pb);
-    wcn_v128f_t vc = wcn_v128f_load(pc);
-    vc = wcn_v128f_fmadd(va, vb, vc);
-    wcn_v128f_store(pc, vc);
+    __m128 va0 = _mm_loadu_ps(pa);
+    __m128 vb0 = _mm_loadu_ps(pb);
+    __m128 vc0 = _mm_loadu_ps(pc);
+    vc0 = _mm_add_ps(_mm_mul_ps(va0, vb0), vc0);
+    _mm_store_ps(pc, vc0);
+
+    pa += 4;
+    pb += 4;
+    pc += 4;
+  }
+#endif
+
+#if defined(WCN_ARM_NEON)
+  for (; i + 16 <= count; i += 16) {
+    __builtin_prefetch(pa + 64);
+    __builtin_prefetch(pb + 64);
+    __builtin_prefetch(pc + 64);
+
+    float32x4_t va0 = vld1q_f32(pa);
+    float32x4_t vb0 = vld1q_f32(pb);
+    float32x4_t vc0 = vld1q_f32(pc);
+    vc0 = vfmaq_f32(va0, vb0, vc0);
+    vst1q_f32(pc, vc0);
+
+    float32x4_t va1 = vld1q_f32(pa + 4);
+    float32x4_t vb1 = vld1q_f32(pb + 4);
+    float32x4_t vc1 = vld1q_f32(pc + 4);
+    vc1 = vfmaq_f32(va1, vb1, vc1);
+    vst1q_f32(pc + 4, vc1);
+
+    float32x4_t va2 = vld1q_f32(pa + 8);
+    float32x4_t vb2 = vld1q_f32(pb + 8);
+    float32x4_t vc2 = vld1q_f32(pc + 8);
+    vc2 = vfmaq_f32(va2, vb2, vc2);
+    vst1q_f32(pc + 8, vc2);
+
+    float32x4_t va3 = vld1q_f32(pa + 12);
+    float32x4_t vb3 = vld1q_f32(pb + 12);
+    float32x4_t vc3 = vld1q_f32(pc + 12);
+    vc3 = vfmaq_f32(va3, vb3, vc3);
+    vst1q_f32(pc + 12, vc3);
+
+    pa += 16;
+    pb += 16;
+    pc += 16;
+  }
+
+  for (; i + 8 <= count; i += 8) {
+    float32x4_t va0 = vld1q_f32(pa);
+    float32x4_t vb0 = vld1q_f32(pb);
+    float32x4_t vc0 = vld1q_f32(pc);
+    vc0 = vfmaq_f32(va0, vb0, vc0);
+    vst1q_f32(pc, vc0);
+
+    float32x4_t va1 = vld1q_f32(pa + 4);
+    float32x4_t vb1 = vld1q_f32(pb + 4);
+    float32x4_t vc1 = vld1q_f32(pc + 4);
+    vc1 = vfmaq_f32(va1, vb1, vc1);
+    vst1q_f32(pc + 4, vc1);
+
+    pa += 8;
+    pb += 8;
+    pc += 8;
+  }
+
+  for (; i + 4 <= count; i += 4) {
+    float32x4_t va0 = vld1q_f32(pa);
+    float32x4_t vb0 = vld1q_f32(pb);
+    float32x4_t vc0 = vld1q_f32(pc);
+    vc0 = vfmaq_f32(va0, vb0, vc0);
+    vst1q_f32(pc, vc0);
 
     pa += 4;
     pb += 4;
@@ -801,14 +881,14 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
 
   // RISC-V Vector Extension implementation
 #if defined(WCN_RISCV_RVV)
-  size_t vl = wcn_rvv_vsetvl_f32(count);
+  size_t vl = __riscv_vsetvl_e32m1(count);
   for (; i + vl <= count; i += vl) {
-    vl = wcn_rvv_vsetvl_f32(count - i);
-    wcn_vscalable_f32_t va = wcn_vscalable_f32_load(pa, vl);
-    wcn_vscalable_f32_t vb = wcn_vscalable_f32_load(pb, vl);
-    wcn_vscalable_f32_t vc = wcn_vscalable_f32_load(pc, vl);
-    vc = wcn_vscalable_f32_fmadd(va, vb, vc, vl);
-    wcn_vscalable_f32_store(pc, vc, vl);
+    vl = __riscv_vsetvl_e32m1(count - i);
+    svfloat32_t va = __riscv_vle32_v_f32m1(pa, vl);
+    svfloat32_t vb = __riscv_vle32_v_f32m1(pb, vl);
+    svfloat32_t vc = __riscv_vle32_v_f32m1(pc, vl);
+    vc = __riscv_vfmadd_vv_f32m1(va, vb, vc, vl);
+    __riscv_vse32_v_f32m1(pc, vc, vl);
 
     pa += vl;
     pb += vl;
