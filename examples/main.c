@@ -33,7 +33,7 @@ static void aligned_free(void *p) { free(p); }
 #endif
 
 #define ARRAY_SIZE 1000000
-#define ITERATIONS 10000
+#define ITERATIONS 1000
 
 void print_features(void) {
   const wcn_simd_features_t *features = wcn_simd_get_features();

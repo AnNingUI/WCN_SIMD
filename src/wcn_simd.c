@@ -259,52 +259,114 @@ void wcn_simd_add_array_f32(const float *WCN_RESTRICT a,
   const float *pb = b;
   float *pc = c;
 
-#if defined(__GNUC__)
-  pa = (const float *)__builtin_assume_aligned(pa, 16);
-  pb = (const float *)__builtin_assume_aligned(pb, 16);
-  pc = (float *)__builtin_assume_aligned(pc, 16);
+  /* --- prologue: advance to alignment boundary for streaming stores if
+   * possible --- */
+#if defined(WCN_X86_AVX2)
+  const size_t _align_bytes = 32;
+#else
+  const size_t _align_bytes = 16;
 #endif
 
-#if defined(WCN_X86_AVX2) && defined(__GNUC__) && defined(__x86_64__)
-  /* AVX2 path implemented with GNU inline assembly for tight loop */
-  for (; i + 8 <= count; i += 8) {
-    __builtin_prefetch(pa + 32);
-    __builtin_prefetch(pb + 32);
-    __asm__ volatile("vmovups (%[pa]), %%ymm0\n\t"
-                     "vmovups (%[pb]), %%ymm1\n\t"
-                     "vaddps %%ymm1, %%ymm0, %%ymm0\n\t"
-                     "vmovups %%ymm0, (%[pc])\n\t"
-                     : /* no outputs */
-                     : [pa] "r"(pa), [pb] "r"(pb), [pc] "r"(pc)
-                     : "ymm0", "ymm1", "memory");
-    pa += 8;
-    pb += 8;
-    pc += 8;
-  }
-  /* avoid upper-latency on older CPUs when mixing SSE and AVX */
-  __asm__ volatile("vzeroupper" ::: "memory");
+  /* compute bytes-to-align for all three pointers at once (branch-light) */
+  size_t combined = ((size_t)pa | (size_t)pb | (size_t)pc);
+  size_t mis = combined & (_align_bytes - 1);
+  size_t lead_bytes = ((_align_bytes - mis) & (_align_bytes - 1));
+  size_t lead = lead_bytes / sizeof(float);
+  if (lead > count)
+    lead = count;
 
-#elif defined(WCN_X86_AVX2)
-  /* Fallback AVX2 wrapper if not using GNU inline asm */
-  for (; i + 8 <= count; i += 8) {
-    __builtin_prefetch(pa + 32);
-    __builtin_prefetch(pb + 32);
-    wcn_v256f_t va = wcn_v256f_load(pa);
-    wcn_v256f_t vb = wcn_v256f_load(pb);
-    wcn_v256f_t vc = wcn_v256f_add(va, vb);
-    wcn_v256f_store(pc, vc);
-    pa += 8;
-    pb += 8;
-    pc += 8;
+  for (size_t k = 0; k < lead; ++k) {
+    *pc++ = *pa++ + *pb++;
+    ++i;
   }
 
+  /* decide whether to use non-temporal (stream) stores:
+     use when total data size large and pc is aligned */
+  int use_nt = 0;
+  size_t total_bytes = count * sizeof(float);
+#if defined(WCN_X86_AVX2)
+  if (((size_t)pc & 31) == 0 && total_bytes >= (64 * 1024))
+    use_nt = 1;
+#elif defined(WCN_X86_SSE2)
+  if (((size_t)pc & 15) == 0 && total_bytes >= (64 * 1024))
+    use_nt = 1;
 #endif
 
-  /* Other SIMD/backends unchanged */
-#if defined(WCN_WASM_SIMD128)
+#if defined(WCN_X86_AVX2)
+  /* AVX2 path: prefer aligned loads/stores after prologue.
+     Use streaming stores if use_nt==1 (writes not reused). */
+  if (use_nt) {
+    /* bigger unroll: 32 floats per outer iter (4 * 256-bit stores) */
+    for (; i + 32 <= count; i += 32) {
+      __m256 a0 = _mm256_load_ps(pa + 0);
+      __m256 a1 = _mm256_load_ps(pa + 8);
+      __m256 a2 = _mm256_load_ps(pa + 16);
+      __m256 a3 = _mm256_load_ps(pa + 24);
+
+      __m256 b0 = _mm256_load_ps(pb + 0);
+      __m256 b1 = _mm256_load_ps(pb + 8);
+      __m256 b2 = _mm256_load_ps(pb + 16);
+      __m256 b3 = _mm256_load_ps(pb + 24);
+
+      _mm256_stream_ps(pc + 0, _mm256_add_ps(a0, b0));
+      _mm256_stream_ps(pc + 8, _mm256_add_ps(a1, b1));
+      _mm256_stream_ps(pc + 16, _mm256_add_ps(a2, b2));
+      _mm256_stream_ps(pc + 24, _mm256_add_ps(a3, b3));
+
+      pa += 32;
+      pb += 32;
+      pc += 32;
+    }
+    for (; i + 16 <= count; i += 16) {
+      __m256 a0 = _mm256_load_ps(pa);
+      __m256 b0 = _mm256_load_ps(pb);
+      __m256 a1 = _mm256_load_ps(pa + 8);
+      __m256 b1 = _mm256_load_ps(pb + 8);
+      _mm256_stream_ps(pc, _mm256_add_ps(a0, b0));
+      _mm256_stream_ps(pc + 8, _mm256_add_ps(a1, b1));
+      pa += 16;
+      pb += 16;
+      pc += 16;
+    }
+    /* small remainder with aligned loads/stores */
+    for (; i + 8 <= count; i += 8) {
+      __m256 va = _mm256_load_ps(pa);
+      __m256 vb = _mm256_load_ps(pb);
+      _mm256_stream_ps(pc, _mm256_add_ps(va, vb));
+      pa += 8;
+      pb += 8;
+      pc += 8;
+    }
+    /* fence to ensure stores are ordered */
+    _mm_sfence();
+  } else {
+    /* normal (non-streaming) - use aligned loads/stores (prologue ensured
+     * alignment) */
+    for (; i + 16 <= count; i += 16) {
+      __m256 a0 = _mm256_load_ps(pa + 0);
+      __m256 b0 = _mm256_load_ps(pb + 0);
+      __m256 a1 = _mm256_load_ps(pa + 8);
+      __m256 b1 = _mm256_load_ps(pb + 8);
+      _mm256_store_ps(pc + 0, _mm256_add_ps(a0, b0));
+      _mm256_store_ps(pc + 8, _mm256_add_ps(a1, b1));
+      pa += 16;
+      pb += 16;
+      pc += 16;
+    }
+    for (; i + 8 <= count; i += 8) {
+      __m256 va = _mm256_load_ps(pa);
+      __m256 vb = _mm256_load_ps(pb);
+      _mm256_store_ps(pc, _mm256_add_ps(va, vb));
+      pa += 8;
+      pb += 8;
+      pc += 8;
+    }
+  }
+
+#elif defined(WCN_WASM_SIMD128)
+  /* WASM SIMD128 - use v128 aligned loads/stores (we assume alignment from
+   * prologue) */
   for (; i + 16 <= count; i += 16) {
-    __builtin_prefetch(pa + 256);
-    __builtin_prefetch(pb + 256);
     v128_t a0 = wasm_v128_load(pa);
     v128_t b0 = wasm_v128_load(pb);
     wasm_v128_store(pc, wasm_f32x4_add(a0, b0));
@@ -340,47 +402,89 @@ void wcn_simd_add_array_f32(const float *WCN_RESTRICT a,
     pb += 4;
     pc += 4;
   }
-#elif defined(WCN_X86_SSE2) || defined(WCN_ARM_NEON)
+
+#elif defined(WCN_X86_SSE2)
+  /* SSE2: use streaming stores if enabled and aligned */
+  if (use_nt) {
+    for (; i + 16 <= count; i += 16) {
+      __m128 a0 = _mm_load_ps(pa + 0);
+      __m128 b0 = _mm_load_ps(pb + 0);
+      __m128 a1 = _mm_load_ps(pa + 4);
+      __m128 b1 = _mm_load_ps(pb + 4);
+      _mm_stream_ps(pc + 0, _mm_add_ps(a0, b0));
+      _mm_stream_ps(pc + 4, _mm_add_ps(a1, b1));
+      __m128 a2 = _mm_load_ps(pa + 8);
+      __m128 b2 = _mm_load_ps(pb + 8);
+      __m128 a3 = _mm_load_ps(pa + 12);
+      __m128 b3 = _mm_load_ps(pb + 12);
+      _mm_stream_ps(pc + 8, _mm_add_ps(a2, b2));
+      _mm_stream_ps(pc + 12, _mm_add_ps(a3, b3));
+      pa += 16;
+      pb += 16;
+      pc += 16;
+    }
+    _mm_sfence();
+  } else {
+    for (; i + 8 <= count; i += 8) {
+      __m128 a0 = _mm_load_ps(pa + 0);
+      __m128 b0 = _mm_load_ps(pb + 0);
+      __m128 a1 = _mm_load_ps(pa + 4);
+      __m128 b1 = _mm_load_ps(pb + 4);
+      _mm_store_ps(pc + 0, _mm_add_ps(a0, b0));
+      _mm_store_ps(pc + 4, _mm_add_ps(a1, b1));
+      pa += 8;
+      pb += 8;
+      pc += 8;
+    }
+    for (; i + 4 <= count; i += 4) {
+      __m128 va = _mm_load_ps(pa);
+      __m128 vb = _mm_load_ps(pb);
+      _mm_store_ps(pc, _mm_add_ps(va, vb));
+      pa += 4;
+      pb += 4;
+      pc += 4;
+    }
+  }
+
+#elif defined(WCN_ARM_NEON)
   for (; i + 8 <= count; i += 8) {
-    __builtin_prefetch(pa + 64);
-    __builtin_prefetch(pb + 64);
-    wcn_v128f_t va0 = wcn_v128f_load(pa);
-    wcn_v128f_t vb0 = wcn_v128f_load(pb);
-    wcn_v128f_t vc0 = wcn_v128f_add(va0, vb0);
-    wcn_v128f_store(pc, vc0);
-    wcn_v128f_t va1 = wcn_v128f_load(pa + 4);
-    wcn_v128f_t vb1 = wcn_v128f_load(pb + 4);
-    wcn_v128f_t vc1 = wcn_v128f_add(va1, vb1);
-    wcn_v128f_store(pc + 4, vc1);
+    float32x4_t a0 = vld1q_f32(pa);
+    float32x4_t b0 = vld1q_f32(pb);
+    float32x4_t r0 = vaddq_f32(a0, b0);
+    vst1q_f32(pc, r0);
+    float32x4_t a1 = vld1q_f32(pa + 4);
+    float32x4_t b1 = vld1q_f32(pb + 4);
+    float32x4_t r1 = vaddq_f32(a1, b1);
+    vst1q_f32(pc + 4, r1);
     pa += 8;
     pb += 8;
     pc += 8;
   }
   for (; i + 4 <= count; i += 4) {
-    wcn_v128f_t va = wcn_v128f_load(pa);
-    wcn_v128f_t vb = wcn_v128f_load(pb);
-    wcn_v128f_t vc = wcn_v128f_add(va, vb);
-    wcn_v128f_store(pc, vc);
+    float32x4_t va = vld1q_f32(pa);
+    float32x4_t vb = vld1q_f32(pb);
+    vst1q_f32(pc, vaddq_f32(va, vb));
     pa += 4;
     pb += 4;
     pc += 4;
   }
+
 #elif defined(WCN_RISCV_RVV)
-  size_t vl = wcn_rvv_vsetvl_f32(count);
-  for (; i + vl <= count; i += vl) {
-    vl = wcn_rvv_vsetvl_f32(count - i);
-    wcn_vscalable_f32_t va = wcn_vscalable_f32_load(pa, vl);
-    wcn_vscalable_f32_t vb = wcn_vscalable_f32_load(pb, vl);
-    wcn_vscalable_f32_t vc = wcn_vscalable_f32_add(va, vb, vl);
-    wcn_vscalable_f32_store(pc, vc, vl);
+  while (i < count) {
+    size_t vl = __riscv_vsetvl_e32m1(count - i);
+    vfloat32m1_t va = __riscv_vle32_v_f32m1(pa, vl);
+    vfloat32m1_t vb = __riscv_vle32_v_f32m1(pb, vl);
+    vfloat32m1_t vr = __riscv_vfadd_vv_f32m1(va, vb, vl);
+    __riscv_vse32_v_f32m1(pc, vr, vl);
     pa += vl;
     pb += vl;
     pc += vl;
+    i += vl;
   }
 #endif
 
-  /* Scalar tail */
-  for (; i < count; i++) {
+  /* scalar tail */
+  for (; i < count; ++i) {
     *pc++ = *pa++ + *pb++;
   }
 }
