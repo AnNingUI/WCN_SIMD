@@ -1,13 +1,13 @@
 [
 {
   "directory": "D:/Dev-Project/c/WCN_SIMD/build",
-  "command": "D:\\Software\\Dev\\msys64\\ucrt64\\bin\\cc.exe -ID:/Dev-Project/c/WCN_SIMD/include -O3 -DNDEBUG -std=c11 -march=native -Wall -Wextra -pedantic -o CMakeFiles\\WCN_SIMD.dir\\src\\wcn_simd.c.obj -c D:\\Dev-Project\\c\\WCN_SIMD\\src\\wcn_simd.c",
+  "command": "D:\\Software\\Dev\\msys64\\ucrt64\\bin\\cc.exe -DNDEBUG -ID:/Dev-Project/c/WCN_SIMD/include -O3 -DNDEBUG -std=c11 -O3 -ffast-math -march=native -mstackrealign -flto -Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -o CMakeFiles\\WCN_SIMD.dir\\src\\wcn_simd.c.obj -c D:\\Dev-Project\\c\\WCN_SIMD\\src\\wcn_simd.c",
   "file": "D:\\Dev-Project\\c\\WCN_SIMD\\src\\wcn_simd.c",
   "output": "CMakeFiles\\WCN_SIMD.dir\\src\\wcn_simd.c.obj"
 },
 {
   "directory": "D:/Dev-Project/c/WCN_SIMD/build",
-  "command": "D:\\Software\\Dev\\msys64\\ucrt64\\bin\\cc.exe -ID:/Dev-Project/c/WCN_SIMD/include -O3 -DNDEBUG -std=c11 -march=native -Wall -Wextra -pedantic -o CMakeFiles\\WCN_SIMD.dir\\src\\wcn_atomic.c.obj -c D:\\Dev-Project\\c\\WCN_SIMD\\src\\wcn_atomic.c",
+  "command": "D:\\Software\\Dev\\msys64\\ucrt64\\bin\\cc.exe -DNDEBUG -ID:/Dev-Project/c/WCN_SIMD/include -O3 -DNDEBUG -std=c11 -O3 -ffast-math -march=native -mstackrealign -flto -Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes -o CMakeFiles\\WCN_SIMD.dir\\src\\wcn_atomic.c.obj -c D:\\Dev-Project\\c\\WCN_SIMD\\src\\wcn_atomic.c",
   "file": "D:\\Dev-Project\\c\\WCN_SIMD\\src\\wcn_atomic.c",
   "output": "CMakeFiles\\WCN_SIMD.dir\\src\\wcn_atomic.c.obj"
 },

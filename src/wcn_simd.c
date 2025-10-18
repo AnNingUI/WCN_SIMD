@@ -1,4 +1,5 @@
 #include "WCN_SIMD.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -184,70 +185,471 @@ const wcn_simd_features_t *wcn_simd_get_features(void) {
 /* ========== Common Algorithms Implementation ========== */
 
 WCN_API_EXPORT
-float wcn_simd_dot_product_f32(const float *a, const float *b, size_t count) {
-  float sum = 0.0F;
+float wcn_simd_dot_product_f32(const float *WCN_RESTRICT a,
+                               const float *WCN_RESTRICT b, size_t count) {
   size_t i = 0;
+  float sum = 0.0f;
 
-#if defined(WCN_X86_AVX2)
-  wcn_v256f_t sum_vec = wcn_v256f_setzero();
+#if defined(__AVX2__) && defined(__FMA__)
+  // --- AVX2 + FMA path with alignment prologue + unroll(2) for ILP ---
+  const uintptr_t a_ptr = (uintptr_t)a;
+  const size_t align_bytes = 32;
+  const size_t mis = a_ptr & (align_bytes - 1);
+  // process prologue until 'a' becomes 32-byte aligned
+  if (mis != 0) {
+    size_t to_align = (align_bytes - mis) / sizeof(float);
+    if (to_align > count)
+      to_align = count;
+    for (size_t k = 0; k < to_align; ++k) {
+      sum = fmaf(a[k], b[k], sum);
+    }
+    i += to_align;
+  }
+
+  // main vector loop: use two accumulators to increase ILP
+  __m256 sum0 = _mm256_setzero_ps();
+  __m256 sum1 = _mm256_setzero_ps();
+
+  // prefetch hints (optional)
+  for (; i + 16 <= count; i += 16) {
+    // prefetch next cache lines (helpful for large arrays)
+    _mm_prefetch((const char *)(a + i + 16), _MM_HINT_T0);
+    _mm_prefetch((const char *)(b + i + 16), _MM_HINT_T0);
+
+    // load aligned (we ensured 'a' is aligned; b may or may not be aligned - if
+    // you can align b too, use load)
+    __m256 va0 = _mm256_load_ps(a + i); // aligned load
+    __m256 vb0 =
+        _mm256_loadu_ps(b + i); // use loadu for b unless aligned guaranteed
+    __m256 va1 = _mm256_load_ps(a + i + 8);
+    __m256 vb1 = _mm256_loadu_ps(b + i + 8);
+
+    // fused multiply-add into separate accumulators
+    sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
+    sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
+  }
+
+  // reduce vector accumulators
+  __m256 sumv = _mm256_add_ps(sum0, sum1);
+  __m128 low = _mm256_castps256_ps128(sumv);
+  __m128 high = _mm256_extractf128_ps(sumv, 1);
+  __m128 s = _mm_add_ps(low, high);
+  s = _mm_add_ps(s, _mm_movehl_ps(s, s));
+  __m128 shuf = _mm_shuffle_ps(s, s, _MM_SHUFFLE(2, 3, 0, 1));
+  s = _mm_add_ps(s, shuf);
+  sum = _mm_cvtss_f32(s);
+
+  // tail vector (if remaining >=8 but <16), process with 8-wide
   for (; i + 8 <= count; i += 8) {
-    wcn_v256f_t va = wcn_v256f_load(a + i);
-    wcn_v256f_t vb = wcn_v256f_load(b + i);
-    wcn_v256f_t prod = wcn_v256f_mul(va, vb);
-    sum_vec = wcn_v256f_add(sum_vec, prod);
-  }
-  /* Horizontal sum of 8 elements */
-  float temp[8];
-  wcn_v256f_store(temp, sum_vec);
-  for (int j = 0; j < 8; j++) {
-    sum += temp[j];
+    __m256 va = _mm256_load_ps(a + i); // aligned
+    __m256 vb = _mm256_loadu_ps(b + i);
+    __m256 t = _mm256_fmadd_ps(va, vb, _mm256_setzero_ps());
+    // horizontal add
+    __m128 lo = _mm256_castps256_ps128(t);
+    __m128 hi = _mm256_extractf128_ps(t, 1);
+    __m128 s2 = _mm_add_ps(lo, hi);
+    s2 = _mm_add_ps(s2, _mm_movehl_ps(s2, s2));
+    __m128 sh2 = _mm_shuffle_ps(s2, s2, _MM_SHUFFLE(2, 3, 0, 1));
+    s2 = _mm_add_ps(s2, sh2);
+    sum += _mm_cvtss_f32(s2);
   }
 
-#elif defined(WCN_X86_SSE2) || defined(WCN_ARM_NEON) ||                        \
-    defined(WCN_WASM_SIMD128)
-  wcn_v128f_t sum_vec = wcn_v128f_setzero();
-  for (; i + 4 <= count; i += 4) {
-    const wcn_v128f_t va = wcn_v128f_load(a + i);
-    const wcn_v128f_t vb = wcn_v128f_load(b + i);
-    wcn_v128f_t prod = wcn_v128f_mul(va, vb);
-    sum_vec = wcn_v128f_add(sum_vec, prod);
-  }
-#if defined(WCN_X86_SSE2)
-  sum = wcn_v128f_reduce_add(sum_vec);
-#elif defined(WCN_ARM_NEON)
-  sum = wcn_v128f_reduce_add(sum_vec);
-#else
-  float temp[4];
-  wcn_v128f_store(temp, sum_vec);
-  for (int j = 0; j < 4; j++) {
-    sum += temp[j];
-  }
-#endif
-
-#elif defined(WCN_RISCV_RVV)
-  size_t vl = wcn_rvv_vsetvl_f32(count);
-  wcn_vscalable_f32_t sum_vec = wcn_vscalable_f32_set1(0.0f, vl);
-  for (; i + vl <= count; i += vl) {
-    vl = wcn_rvv_vsetvl_f32(count - i);
-    wcn_vscalable_f32_t va = wcn_vscalable_f32_load(a + i, vl);
-    wcn_vscalable_f32_t vb = wcn_vscalable_f32_load(b + i, vl);
-    wcn_vscalable_f32_t prod = wcn_vscalable_f32_mul(va, vb, vl);
-    sum_vec = wcn_vscalable_f32_add(sum_vec, prod, vl);
-  }
-  /* Manual reduction for RVV */
-  float temp[256];
-  wcn_vscalable_f32_store(temp, sum_vec, vl);
-  for (size_t j = 0; j < vl; j++) {
-    sum += temp[j];
-  }
-#endif
-
-  /* Scalar tail */
-  for (; i < count; i++) {
-    sum += a[i] * b[i];
+  // scalar tail
+  for (; i < count; ++i) {
+    sum = fmaf(a[i], b[i], sum);
   }
 
   return sum;
+
+#elif defined(__AVX2__)
+  // AVX2 without FMA: similar strategy but use mul+add
+  const uintptr_t a_ptr = (uintptr_t)a;
+  const size_t align_bytes = 32;
+  const size_t mis = a_ptr & (align_bytes - 1);
+  if (mis != 0) {
+    size_t to_align = (align_bytes - mis) / sizeof(float);
+    if (to_align > count)
+      to_align = count;
+    for (size_t k = 0; k < to_align; ++k)
+      sum += a[k] * b[k];
+    i += to_align;
+  }
+
+  __m256 sum0 = _mm256_setzero_ps();
+  __m256 sum1 = _mm256_setzero_ps();
+
+  for (; i + 16 <= count; i += 16) {
+    _mm_prefetch((const char *)(a + i + 16), _MM_HINT_T0);
+    _mm_prefetch((const char *)(b + i + 16), _MM_HINT_T0);
+
+    __m256 va0 = _mm256_load_ps(a + i);
+    __m256 vb0 = _mm256_loadu_ps(b + i);
+    __m256 va1 = _mm256_load_ps(a + i + 8);
+    __m256 vb1 = _mm256_loadu_ps(b + i + 8);
+
+    sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(va0, vb0));
+    sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(va1, vb1));
+  }
+
+  __m256 sumv = _mm256_add_ps(sum0, sum1);
+  __m128 low = _mm256_castps256_ps128(sumv);
+  __m128 high = _mm256_extractf128_ps(sumv, 1);
+  __m128 s = _mm_add_ps(low, high);
+  s = _mm_add_ps(s, _mm_movehl_ps(s, s));
+  __m128 shuf = _mm_shuffle_ps(s, s, _MM_SHUFFLE(2, 3, 0, 1));
+  s = _mm_add_ps(s, shuf);
+  sum = _mm_cvtss_f32(s);
+
+  for (; i + 8 <= count; i += 8) {
+    __m256 va = _mm256_load_ps(a + i);
+    __m256 vb = _mm256_loadu_ps(b + i);
+    __m256 t = _mm256_mul_ps(va, vb);
+    __m128 lo = _mm256_castps256_ps128(t);
+    __m128 hi = _mm256_extractf128_ps(t, 1);
+    __m128 s2 = _mm_add_ps(lo, hi);
+    s2 = _mm_add_ps(s2, _mm_movehl_ps(s2, s2));
+    __m128 sh2 = _mm_shuffle_ps(s2, s2, _MM_SHUFFLE(2, 3, 0, 1));
+    s2 = _mm_add_ps(s2, sh2);
+    sum += _mm_cvtss_f32(s2);
+  }
+
+  for (; i < count; ++i)
+    sum += a[i] * b[i];
+  return sum;
+
+#elif defined(__SSE2__)
+  // SSE2: align to 16 bytes and unroll
+  const uintptr_t a_ptr = (uintptr_t)a;
+  const size_t align_bytes = 16;
+  const size_t mis = a_ptr & (align_bytes - 1);
+  if (mis != 0) {
+    size_t to_align = (align_bytes - mis) / sizeof(float);
+    if (to_align > count)
+      to_align = count;
+    for (size_t k = 0; k < to_align; ++k)
+      sum += a[k] * b[k];
+    i += to_align;
+  }
+
+  __m128 sumv = _mm_setzero_ps();
+  for (; i + 4 <= count; i += 4) {
+    __m128 va = _mm_load_ps(a + i); // aligned
+    __m128 vb = _mm_loadu_ps(b + i);
+#if defined(__FMA__)
+    sumv = _mm_fmadd_ps(va, vb, sumv);
+#else
+    sumv = _mm_add_ps(sumv, _mm_mul_ps(va, vb));
+#endif
+  }
+
+  __m128 s = _mm_add_ps(sumv, _mm_movehl_ps(sumv, sumv));
+  __m128 sh = _mm_shuffle_ps(s, s, _MM_SHUFFLE(2, 3, 0, 1));
+  s = _mm_add_ps(s, sh);
+  sum = _mm_cvtss_f32(s);
+
+  for (; i < count; ++i)
+    sum += a[i] * b[i];
+  return sum;
+
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+  // NEON: we can do similar unroll; NEON loads don't require alignment on many
+  // platforms
+  float32x4_t acc0 = vdupq_n_f32(0.0f);
+  for (; i + 8 <= count; i += 8) {
+    float32x4_t va0 = vld1q_f32(a + i);
+    float32x4_t vb0 = vld1q_f32(b + i);
+    float32x4_t va1 = vld1q_f32(a + i + 4);
+    float32x4_t vb1 = vld1q_f32(b + i + 4);
+#if defined(__ARM_FEATURE_FMA)
+    acc0 = vfmaq_f32(acc0, va0, vb0);
+    acc0 = vfmaq_f32(acc0, va1, vb1);
+#else
+    acc0 = vaddq_f32(acc0, vmulq_f32(va0, vb0));
+    acc0 = vaddq_f32(acc0, vmulq_f32(va1, vb1));
+#endif
+  }
+  float32x2_t pair = vadd_f32(vget_low_f32(acc0), vget_high_f32(acc0));
+  pair = vpadd_f32(pair, pair);
+  sum = vget_lane_f32(pair, 0);
+
+  for (; i < count; ++i)
+    sum = fmaf(a[i], b[i], sum);
+  return sum;
+
+#elif defined(__wasm_simd128__)
+  // WASM SIMD128 basic vectorized loop (no alignment control here)
+  v128_t acc = wasm_f32x4_splat(0.0f);
+  for (; i + 4 <= count; i += 4) {
+    v128_t va = wasm_v128_load(a + i);
+    v128_t vb = wasm_v128_load(b + i);
+    acc = wasm_f32x4_add(acc, wasm_f32x4_mul(va, vb));
+  }
+  acc = wasm_f32x4_add(acc, wasm_i32x4_shuffle(acc, acc, 2, 3, 0, 1));
+  acc = wasm_f32x4_add(acc, wasm_i32x4_shuffle(acc, acc, 1, 0, 3, 2));
+  sum = wasm_f32x4_extract_lane(acc, 0);
+  for (; i < count; ++i)
+    sum = fmaf(a[i], b[i], sum);
+  return sum;
+
+#elif defined(__riscv_vector)
+  // RVV accumulate
+  size_t vl = __riscv_vsetvl_e32m1(count);
+  vfloat32m1_t acc = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+  for (; i < count;) {
+    vl = __riscv_vsetvl_e32m1(count - i);
+    vfloat32m1_t va = __riscv_vle32_v_f32m1(a + i, vl);
+    vfloat32m1_t vb = __riscv_vle32_v_f32m1(b + i, vl);
+    vfloat32m1_t prod = __riscv_vfmul_vv_f32m1(va, vb, vl);
+    acc = __riscv_vfadd_vv_f32m1(acc, prod, vl);
+    i += vl;
+  }
+  vfloat32m1_t red =
+      __riscv_vfredsum_vs_f32m1_f32m1(acc, vfmv_s_f_f32m1(0.0f, 1), vl);
+  sum = vfmv_f_s_f32m1_f32(red);
+  return sum;
+
+#else
+  // portable scalar fallback (with FMA if available)
+  for (; i < count; ++i) {
+#if defined(__FMA__) ||                                                        \
+    defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+    sum = fmaf(a[i], b[i], sum);
+#else
+    sum += a[i] * b[i];
+#endif
+  }
+  return sum;
+#endif
+}
+
+WCN_API_EXPORT
+float wcn_simd_dot_product_kahan_f32(const float *a, const float *b,
+                                     size_t count) {
+  size_t i = 0;
+  float sum = 0.0f;
+
+#if defined(WCN_X86_AVX2)
+  __m256 sum_vec = _mm256_setzero_ps();
+  __m256 c_vec = _mm256_setzero_ps();
+
+  for (; i + 8 <= count; i += 8) {
+    __m256 va = _mm256_loadu_ps(a + i);
+    __m256 vb = _mm256_loadu_ps(b + i);
+#if defined(__FMA__)
+    __m256 prod = _mm256_fmadd_ps(va, vb, _mm256_setzero_ps());
+#else
+    __m256 prod = _mm256_mul_ps(va, vb);
+#endif
+    __m256 y = _mm256_sub_ps(prod, c_vec);
+    __m256 t = _mm256_add_ps(sum_vec, y);
+    __m256 c_temp = _mm256_sub_ps(_mm256_sub_ps(t, sum_vec), y);
+    c_vec = c_temp;
+    sum_vec = t;
+  }
+
+  // 归约 sum_vec
+  __m128 low = _mm256_castps256_ps128(sum_vec);
+  __m128 high = _mm256_extractf128_ps(sum_vec, 1);
+  __m128 s128 = _mm_add_ps(low, high);
+  s128 = _mm_add_ps(s128, _mm_movehl_ps(s128, s128));
+  __m128 shuf = _mm_shuffle_ps(s128, s128, _MM_SHUFFLE(2, 3, 0, 1));
+  s128 = _mm_add_ps(s128, shuf);
+  sum = _mm_cvtss_f32(s128);
+
+  // 归约 c_vec
+  __m128 cl = _mm256_castps256_ps128(c_vec);
+  __m128 ch = _mm256_extractf128_ps(c_vec, 1);
+  __m128 c128 = _mm_add_ps(cl, ch);
+  c128 = _mm_add_ps(c128, _mm_movehl_ps(c128, c128));
+  __m128 cshuf = _mm_shuffle_ps(c128, c128, _MM_SHUFFLE(2, 3, 0, 1));
+  c128 = _mm_add_ps(c128, cshuf);
+  float c = _mm_cvtss_f32(c128);
+
+  // 尾部标量部分
+  for (; i < count; i++) {
+#if defined(__FMA__)
+    float y = fmaf(a[i], b[i], -c);
+#else
+    float y = a[i] * b[i] - c;
+#endif
+    float t = sum + y;
+    c = (t - sum) - y;
+    sum = t;
+  }
+
+  return sum - c;
+
+#elif defined(WCN_X86_SSE2)
+  __m128 sum_vec = _mm_setzero_ps();
+  __m128 c_vec = _mm_setzero_ps();
+
+  for (; i + 4 <= count; i += 4) {
+    __m128 va = _mm_loadu_ps(a + i);
+    __m128 vb = _mm_loadu_ps(b + i);
+#if defined(__FMA__)
+    __m128 prod = _mm_fmadd_ps(va, vb, _mm_setzero_ps());
+#else
+    __m128 prod = _mm_mul_ps(va, vb);
+#endif
+    __m128 y = _mm_sub_ps(prod, c_vec);
+    __m128 t = _mm_add_ps(sum_vec, y);
+    __m128 c_temp = _mm_sub_ps(_mm_sub_ps(t, sum_vec), y);
+    c_vec = c_temp;
+    sum_vec = t;
+  }
+
+  __m128 temp = _mm_add_ps(sum_vec, _mm_movehl_ps(sum_vec, sum_vec));
+  __m128 shuf = _mm_shuffle_ps(temp, temp, _MM_SHUFFLE(2, 3, 0, 1));
+  temp = _mm_add_ps(temp, shuf);
+  sum = _mm_cvtss_f32(temp);
+
+  __m128 ctemp = _mm_add_ps(c_vec, _mm_movehl_ps(c_vec, c_vec));
+  __m128 cshuf = _mm_shuffle_ps(ctemp, ctemp, _MM_SHUFFLE(2, 3, 0, 1));
+  ctemp = _mm_add_ps(ctemp, cshuf);
+  float c = _mm_cvtss_f32(ctemp);
+
+  for (; i < count; i++) {
+#if defined(__FMA__)
+    float y = fmaf(a[i], b[i], -c);
+#else
+    float y = a[i] * b[i] - c;
+#endif
+    float t = sum + y;
+    c = (t - sum) - y;
+    sum = t;
+  }
+
+  return sum - c;
+
+#elif defined(WCN_ARM_NEON)
+  float32x4_t sum_vec = vdupq_n_f32(0.0f);
+  float32x4_t c_vec = vdupq_n_f32(0.0f);
+
+  for (; i + 4 <= count; i += 4) {
+    float32x4_t va = vld1q_f32(a + i);
+    float32x4_t vb = vld1q_f32(b + i);
+#if defined(__ARM_FEATURE_FMA)
+    float32x4_t prod = vfmaq_f32(vdupq_n_f32(0.0f), va, vb);
+#else
+    float32x4_t prod = vmulq_f32(va, vb);
+#endif
+    float32x4_t y = vsubq_f32(prod, c_vec);
+    float32x4_t t = vaddq_f32(sum_vec, y);
+    float32x4_t c_temp = vsubq_f32(vsubq_f32(t, sum_vec), y);
+    c_vec = c_temp;
+    sum_vec = t;
+  }
+
+  float32x2_t s2 = vadd_f32(vget_low_f32(sum_vec), vget_high_f32(sum_vec));
+  s2 = vpadd_f32(s2, s2);
+  sum = vget_lane_f32(s2, 0);
+
+  float32x2_t c2 = vadd_f32(vget_low_f32(c_vec), vget_high_f32(c_vec));
+  c2 = vpadd_f32(c2, c2);
+  float c = vget_lane_f32(c2, 0);
+
+  for (; i < count; i++) {
+#if defined(__ARM_FEATURE_FMA)
+    float y = fmaf(a[i], b[i], -c);
+#else
+    float y = a[i] * b[i] - c;
+#endif
+    float t = sum + y;
+    c = (t - sum) - y;
+    sum = t;
+  }
+
+  return sum - c;
+
+#elif defined(WCN_WASM_SIMD128)
+  v128_t sum_vec = wasm_f32x4_splat(0.0f);
+  v128_t c_vec = wasm_f32x4_splat(0.0f);
+
+  for (; i + 4 <= count; i += 4) {
+    v128_t va = wasm_v128_load(a + i);
+    v128_t vb = wasm_v128_load(b + i);
+    v128_t prod = wasm_f32x4_mul(va, vb);
+    v128_t y = wasm_f32x4_sub(prod, c_vec);
+    v128_t t = wasm_f32x4_add(sum_vec, y);
+    v128_t c_temp = wasm_f32x4_sub(wasm_f32x4_sub(t, sum_vec), y);
+    c_vec = c_temp;
+    sum_vec = t;
+  }
+
+  sum_vec =
+      wasm_f32x4_add(sum_vec, wasm_i32x4_shuffle(sum_vec, sum_vec, 2, 3, 0, 1));
+  sum_vec =
+      wasm_f32x4_add(sum_vec, wasm_i32x4_shuffle(sum_vec, sum_vec, 1, 0, 3, 2));
+  sum = wasm_f32x4_extract_lane(sum_vec, 0);
+
+  c_vec = wasm_f32x4_add(c_vec, wasm_i32x4_shuffle(c_vec, c_vec, 2, 3, 0, 1));
+  c_vec = wasm_f32x4_add(c_vec, wasm_i32x4_shuffle(c_vec, c_vec, 1, 0, 3, 2));
+  float c = wasm_f32x4_extract_lane(c_vec, 0);
+
+  for (; i < count; i++) {
+    float y = fmaf(a[i], b[i], -c);
+    float t = sum + y;
+    c = (t - sum) - y;
+    sum = t;
+  }
+
+  return sum - c;
+
+#elif defined(WCN_RISCV_RVV)
+  // RISC-V Vector Kahan求和实现
+  size_t vl = __riscv_vsetvl_e32m1(count);
+  vfloat32m1_t sum_vec = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+  vfloat32m1_t c_vec = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+
+  for (; i + vl <= count; i += vl) {
+    vl = __riscv_vsetvl_e32m1(count - i);
+    vfloat32m1_t va = __riscv_vle32_v_f32m1(a + i, vl);
+    vfloat32m1_t vb = __riscv_vle32_v_f32m1(b + i, vl);
+    vfloat32m1_t prod = __riscv_vfmul_vv_f32m1(va, vb, vl);
+
+    // Kahan求和核心算法的SIMD版本
+    vfloat32m1_t y = __riscv_vfsub_vv_f32m1(prod, c_vec, vl);
+    vfloat32m1_t t = __riscv_vfadd_vv_f32m1(sum_vec, y, vl);
+    vfloat32m1_t c_temp =
+        __riscv_vfsub_vv_f32m1(__riscv_vfsub_vv_f32m1(t, sum_vec, vl), y, vl);
+    c_vec = c_temp;
+    sum_vec = t;
+  }
+
+  // 归约求和
+  vfloat32m1_t red_sum =
+      __riscv_vfredsum_vs_f32m1_f32m1(sum_vec, vfmv_s_f_f32m1(0.0f, 1), vl);
+  sum = vfmv_f_s_f32m1_f32(red_sum);
+
+  // 归约补偿值
+  vfloat32m1_t red_c =
+      __riscv_vfredsum_vs_f32m1_f32m1(c_vec, vfmv_s_f_f32m1(0.0f, 1), vl);
+  float c = vfmv_f_s_f32m1_f32(red_c);
+
+  // 处理剩余元素
+  for (; i < count; i++) {
+    float y = a[i] * b[i] - c;
+    float t = sum + y;
+    c = (t - sum) - y;
+    sum = t;
+  }
+
+  return sum - c;
+
+#else
+  float c = 0.0f;
+  for (; i < count; i++) {
+#if defined(__FMA__)
+    float y = fmaf(a[i], b[i], -c);
+#else
+    float y = a[i] * b[i] - c;
+#endif
+    float t = sum + y;
+    c = (t - sum) - y;
+    sum = t;
+  }
+  return sum - c;
+#endif
 }
 
 WCN_API_EXPORT
@@ -776,73 +1178,74 @@ void wcn_simd_fmadd_array_f32(const float *WCN_RESTRICT a,
 
   // WebAssembly SIMD128 implementation with loop unrolling
 #if defined(WCN_WASM_SIMD128)
+  // Process 64-element chunks
   for (; i + 64 <= count; i += 64) {
     __builtin_prefetch(pa + 128);
     __builtin_prefetch(pb + 128);
     __builtin_prefetch(pc + 128);
 
     // Process 4 vectors (64 bytes) at a time
+    // 每个向量处理16字节（4个float）
     v128_t v0_0 = wasm_v128_load(pa);
     v128_t v1_0 = wasm_v128_load(pb);
     v128_t v2_0 = wasm_v128_load(pc);
-
-    v128_t v0_1 = wasm_v128_load(pa + 16);
-    v128_t v1_1 = wasm_v128_load(pb + 16);
-    v128_t v2_1 = wasm_v128_load(pc + 16);
-
-    v128_t v0_2 = wasm_v128_load(pa + 32);
-    v128_t v1_2 = wasm_v128_load(pb + 32);
-    v128_t v2_2 = wasm_v128_load(pc + 32);
-
-    v128_t v0_3 = wasm_v128_load(pa + 48);
-    v128_t v1_3 = wasm_v128_load(pb + 48);
-    v128_t v2_3 = wasm_v128_load(pc + 48);
-
     wasm_v128_store(pc, wasm_f32x4_qfma(v0_0, v1_0, v2_0));
-    wasm_v128_store(pc + 16, wasm_f32x4_qfma(v0_1, v1_1, v2_1));
-    wasm_v128_store(pc + 32, wasm_f32x4_qfma(v0_2, v1_2, v2_2));
-    wasm_v128_store(pc + 48, wasm_f32x4_qfma(v0_3, v1_3, v2_3));
+
+    // 修正：+16字节偏移（4个float）
+    v128_t v0_1 = wasm_v128_load(pa + 4); // ✅ pa + 4*sizeof(float)
+    v128_t v1_1 = wasm_v128_load(pb + 4); // ✅
+    v128_t v2_1 = wasm_v128_load(pc + 4); // ✅
+    wasm_v128_store(pc + 4, wasm_f32x4_qfma(v0_1, v1_1, v2_1));
+
+    // 继续修正后续偏移
+    v128_t v0_2 = wasm_v128_load(pa + 8); // ✅
+    v128_t v1_2 = wasm_v128_load(pb + 8); // ✅
+    v128_t v2_2 = wasm_v128_load(pc + 8); // ✅
+    wasm_v128_store(pc + 8, wasm_f32x4_qfma(v0_2, v1_2, v2_2));
+
+    v128_t v0_3 = wasm_v128_load(pa + 12); // ✅
+    v128_t v1_3 = wasm_v128_load(pb + 12); // ✅
+    v128_t v2_3 = wasm_v128_load(pc + 12); // ✅
+    wasm_v128_store(pc + 12, wasm_f32x4_qfma(v0_3, v1_3, v2_3));
 
     pa += 64;
     pb += 64;
     pc += 64;
   }
 
-  // Process remaining 16-byte chunks
+  // Process 16-element chunks
   for (; i + 16 <= count; i += 16) {
-    v128_t v0_0 = wasm_v128_load(pa);
-    v128_t v1_0 = wasm_v128_load(pb);
-    v128_t v2_0 = wasm_v128_load(pc);
+    v128_t va0 = wasm_v128_load(pa);
+    v128_t vb0 = wasm_v128_load(pb);
+    v128_t vc0 = wasm_v128_load(pc);
+    wasm_v128_store(pc, wasm_f32x4_qfma(va0, vb0, vc0));
 
-    v128_t v0_1 = wasm_v128_load(pa + 4);
-    v128_t v1_1 = wasm_v128_load(pb + 4);
-    v128_t v2_1 = wasm_v128_load(pc + 4);
+    v128_t va1 = wasm_v128_load(pa + 4);
+    v128_t vb1 = wasm_v128_load(pb + 4);
+    v128_t vc1 = wasm_v128_load(pc + 4);
+    wasm_v128_store(pc + 4, wasm_f32x4_qfma(va1, vb1, vc1));
 
-    v128_t v0_2 = wasm_v128_load(pa + 8);
-    v128_t v1_2 = wasm_v128_load(pb + 8);
-    v128_t v2_2 = wasm_v128_load(pc + 8);
+    v128_t va2 = wasm_v128_load(pa + 8);
+    v128_t vb2 = wasm_v128_load(pb + 8);
+    v128_t vc2 = wasm_v128_load(pc + 8);
+    wasm_v128_store(pc + 8, wasm_f32x4_qfma(va2, vb2, vc2));
 
-    v128_t v0_3 = wasm_v128_load(pa + 12);
-    v128_t v1_3 = wasm_v128_load(pb + 12);
-    v128_t v2_3 = wasm_v128_load(pc + 12);
-
-    wasm_v128_store(pc, wasm_f32x4_qfma(v0_0, v1_0, v2_0));
-    wasm_v128_store(pc + 4, wasm_f32x4_qfma(v0_1, v1_1, v2_1));
-    wasm_v128_store(pc + 8, wasm_f32x4_qfma(v0_2, v1_2, v2_2));
-    wasm_v128_store(pc + 12, wasm_f32x4_qfma(v0_3, v1_3, v2_3));
+    v128_t va3 = wasm_v128_load(pa + 12);
+    v128_t vb3 = wasm_v128_load(pb + 12);
+    v128_t vc3 = wasm_v128_load(pc + 12);
+    wasm_v128_store(pc + 12, wasm_f32x4_qfma(va3, vb3, vc3));
 
     pa += 16;
     pb += 16;
     pc += 16;
   }
 
-  // Process remaining 4-byte chunks
+  // Process 4-element chunks
   for (; i + 4 <= count; i += 4) {
-    v128_t v0 = wasm_v128_load(pa);
-    v128_t v1 = wasm_v128_load(pb);
-    v128_t v2 = wasm_v128_load(pc);
-
-    wasm_v128_store(pc, wasm_f32x4_add(wasm_f32x4_mul(v0, v1), v2));
+    v128_t va = wasm_v128_load(pa);
+    v128_t vb = wasm_v128_load(pb);
+    v128_t vc = wasm_v128_load(pc);
+    wasm_v128_store(pc, wasm_f32x4_qfma(va, vb, vc));
 
     pa += 4;
     pb += 4;

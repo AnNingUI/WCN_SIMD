@@ -87,8 +87,8 @@ void benchmark_dot_product(void) {
 
   /* Initialize with random data */
   for (size_t i = 0; i < ARRAY_SIZE; i++) {
-    a[i] = (float)rand() / RAND_MAX;
-    b[i] = (float)rand() / RAND_MAX;
+    a[i] = 1.1F;
+    b[i] = 1.1F;
   }
 
   // ensure pages are touched
@@ -224,7 +224,7 @@ void test_basic_operations(void) {
   float c[8];
 
   /* Test dot product */
-  float dot = wcn_simd_dot_product_f32(a, b, 8);
+  float dot = wcn_simd_dot_product_kahan_f32(a, b, 8);
   printf("Dot product: %.2f (expected: 120.00)\n", dot);
 
   /* Test vector addition */
