@@ -125,7 +125,6 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|amd64|x86|i686)")
     # x86 特定优化标志
     if(NOT MSVC)
         target_compile_options(${PROJECT_NAME} PRIVATE 
-            -malign-data=cacheline
             -mstackrealign
         )
     endif()
