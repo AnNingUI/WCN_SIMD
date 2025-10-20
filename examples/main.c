@@ -32,8 +32,8 @@ static float *aligned_alloc_f32(size_t count) {
 static void aligned_free(void *p) { free(p); }
 #endif
 
-#define ARRAY_SIZE 1000000
-#define ITERATIONS 100
+#define ARRAY_SIZE 100000
+#define ITERATIONS 1000
 
 void print_features(void) {
   const wcn_simd_features_t *features = wcn_simd_get_features();
@@ -87,14 +87,15 @@ void benchmark_dot_product(void) {
 
   /* Initialize with random data */
   for (size_t i = 0; i < ARRAY_SIZE; i++) {
-    a[i] = (float)rand() / RAND_MAX;
-    b[i] = (float)rand() / RAND_MAX;
+    a[i] = 1.1F;
+    b[i] = 1.1F;
   }
 
   // ensure pages are touched
-  volatile float sink = 0.0f;
-  for (size_t i = 0; i < ARRAY_SIZE; i += 4096 / sizeof(float))
+  volatile float sink = 0.0F;
+  for (size_t i = 0; i < ARRAY_SIZE; i += 4096 / sizeof(float)) {
     sink += a[i] + b[i];
+  }
   (void)sink;
 
   printf("=== Dot Product Benchmark ===\n");
@@ -102,14 +103,14 @@ void benchmark_dot_product(void) {
   printf("Iterations: %d\n", ITERATIONS);
 
   /* Warm-up */
-  for (int iter = 0; iter < 10; iter++)
-    wcn_simd_dot_product_f32(a, b, ARRAY_SIZE);
+  // for (int iter = 0; iter < 10; iter++)
+  //   wcn_simd_dot_product_f32(a, b, ARRAY_SIZE);
 
   /* SIMD version */
   double start = now_seconds();
   float result_simd = 0.0F;
   for (int iter = 0; iter < ITERATIONS; iter++) {
-    result_simd = wcn_simd_dot_product_f32(a, b, ARRAY_SIZE);
+    result_simd = wcn_simd_dot_product_kahan_f32(a, b, ARRAY_SIZE);
   }
   double end = now_seconds();
   double time_simd = end - start;
@@ -127,18 +128,19 @@ void benchmark_dot_product(void) {
     }
   }
   end = now_seconds();
-  double time_scalar = end - start;
-  volatile float sink_scalar = result_scalar;
+  const double time_scalar = end - start;
+  const volatile float sink_scalar = result_scalar;
   (void)sink_scalar;
 
-  printf("SIMD result: %.6f (total %.6f s, avg %.6f s)", result_simd, time_simd,
-         time_simd / ITERATIONS);
+  printf("SIMD result  : %.6f (total %.6f s, avg %.6f s)", result_simd,
+         time_simd, time_simd / ITERATIONS);
   printf("\nScalar result: %.6f (total %.6f s, avg %.6f s)\n", result_scalar,
          time_scalar, time_scalar / ITERATIONS);
-  if (time_simd > 0.0)
+  if (time_simd > 0.0) {
     printf("Speedup: %.2fx\n\n", time_scalar / time_simd);
-  else
+  } else {
     printf("Speedup: inf\n\n");
+  }
 
   aligned_free(a);
   aligned_free(b);
@@ -169,8 +171,8 @@ void benchmark_vector_add(void) {
   printf("Iterations: %d\n", ITERATIONS);
 
   /* Warm-up */
-  for (int iter = 0; iter < 10; iter++)
-    wcn_simd_add_array_f32(a, b, c, ARRAY_SIZE);
+  // for (int iter = 0; iter < 10; iter++)
+  //   wcn_simd_add_array_f32(a, b, c, ARRAY_SIZE);
 
   /* SIMD version */
   double start = now_seconds();
@@ -202,7 +204,7 @@ void benchmark_vector_add(void) {
   volatile double use_scalar = checksum_scalar;
   (void)use_scalar;
 
-  printf("SIMD time: %.6f s (avg %.6f s), checksum: %.6f\n", time_simd,
+  printf("SIMD time  : %.6f s (avg %.6f s), checksum: %.6f\n", time_simd,
          time_simd / ITERATIONS, checksum_simd);
   printf("Scalar time: %.6f s (avg %.6f s), checksum: %.6f\n", time_scalar,
          time_scalar / ITERATIONS, checksum_scalar);
@@ -224,7 +226,7 @@ void test_basic_operations(void) {
   float c[8];
 
   /* Test dot product */
-  float dot = wcn_simd_dot_product_f32(a, b, 8);
+  float dot = wcn_simd_dot_product_kahan_f32(a, b, 8);
   printf("Dot product: %.2f (expected: 120.00)\n", dot);
 
   /* Test vector addition */

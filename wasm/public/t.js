@@ -6,4 +6,4 @@ const wasmBuffer = fs.readFileSync('./WCN_SIMD.wasm');
 const base64 = wasmBuffer.toString('base64');
 // 生成可内嵌到 JS 的代码（导出一个获取 Uint8Array 的函数）
 const output = `export const wasmBase64 = '${base64}';\n`;
-fs.writeFileSync('wasm-embedded.js', output);
+fs.writeFileSync('../src/wcn_simd.base64.ts', output);

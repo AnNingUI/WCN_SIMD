@@ -3,7 +3,7 @@
 
 /*
  * WCN_SIMD - High-Performance Cross-Platform SIMD Library
- * 
+ *
  * Unified SIMD abstraction layer supporting:
  * - x86/x86_64: SSE2, SSE4, AVX, AVX2, AVX-512
  * - ARM: NEON, SVE, SVE2
@@ -12,7 +12,7 @@
  * - PowerPC: AltiVec, VSX
  * - MIPS: MSA
  * - WebAssembly: SIMD128
- * 
+ *
  * Design Principles:
  * - Zero-overhead abstraction
  * - Compile-time platform detection
@@ -24,14 +24,15 @@
 extern "C" {
 #endif
 
-/* Portable export macro for public APIs (Standalone Wasm export on Emscripten) */
+/* Portable export macro for public APIs (Standalone Wasm export on Emscripten)
+ */
 #ifndef WCN_API_EXPORT
-#  ifdef __EMSCRIPTEN__
-#    include <emscripten/emscripten.h>
-#    define WCN_API_EXPORT EMSCRIPTEN_KEEPALIVE
-#  else
-#    define WCN_API_EXPORT
-#  endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#define WCN_API_EXPORT EMSCRIPTEN_KEEPALIVE
+#else
+#define WCN_API_EXPORT
+#endif
 #endif
 
 #include "wcn_simd/wcn_detect.h"
@@ -39,26 +40,26 @@ extern "C" {
 
 /* Include platform-specific implementations */
 #if defined(WCN_X86_SSE2)
-    #include "wcn_simd/platform/x86/wcn_x86_sse2.h"
+#include "wcn_simd/platform/x86/wcn_x86_sse2.h"
 #endif
 
 #if defined(WCN_X86_SSE3)
-    #include "wcn_simd/platform/x86/wcn_x86_sse3.h"
+#include "wcn_simd/platform/x86/wcn_x86_sse3.h"
 #endif
 
 #if defined(WCN_X86_SSSE3)
-    #include "wcn_simd/platform/x86/wcn_x86_ssse3.h"
+#include "wcn_simd/platform/x86/wcn_x86_ssse3.h"
 #endif
 
 #if defined(WCN_X86_SSE4_1)
-    #include "wcn_simd/platform/x86/wcn_x86_sse4_1.h"
+#include "wcn_simd/platform/x86/wcn_x86_sse4_1.h"
 #endif
 
 #if defined(WCN_X86_AVX2)
-    /* AVX2 is a superset of AVX, include only AVX2 to avoid redefinition */
-    #include "wcn_simd/platform/x86/wcn_x86_avx2.h"
+/* AVX2 is a superset of AVX, include only AVX2 to avoid redefinition */
+#include "wcn_simd/platform/x86/wcn_x86_avx2.h"
 #elif defined(WCN_X86_AVX)
-    #include "wcn_simd/platform/x86/wcn_x86_avx.h"
+#include "wcn_simd/platform/x86/wcn_x86_avx.h"
 #endif
 
 /* Temporarily disabled until AVX512F is tested */
@@ -69,35 +70,35 @@ extern "C" {
 */
 
 #if defined(WCN_ARM_NEON)
-    #include "wcn_simd/platform/arm/wcn_arm_neon.h"
+#include "wcn_simd/platform/arm/wcn_arm_neon.h"
 #endif
 
 #if defined(WCN_ARM_SVE)
-    #include "wcn_simd/platform/arm/wcn_arm_sve.h"
+#include "wcn_simd/platform/arm/wcn_arm_sve.h"
 #endif
 
 #if defined(WCN_LOONGARCH_LSX)
-    #include "wcn_simd/platform/loongarch/wcn_loongarch_lsx.h"
+#include "wcn_simd/platform/loongarch/wcn_loongarch_lsx.h"
 #endif
 
 #if defined(WCN_LOONGARCH_LASX)
-    #include "wcn_simd/platform/loongarch/wcn_loongarch_lasx.h"
+#include "wcn_simd/platform/loongarch/wcn_loongarch_lasx.h"
 #endif
 
 #if defined(WCN_RISCV_RVV)
-    #include "wcn_simd/platform/riscv/wcn_riscv_rvv.h"
+#include "wcn_simd/platform/riscv/wcn_riscv_rvv.h"
 #endif
 
 #if defined(WCN_POWERPC_ALTIVEC)
-    #include "wcn_simd/platform/powerpc/wcn_powerpc_altivec.h"
+#include "wcn_simd/platform/powerpc/wcn_powerpc_altivec.h"
 #endif
 
 #if defined(WCN_WASM_SIMD128)
-    #include "wcn_simd/platform/wasm/wcn_wasm_simd128.h"
+#include "wcn_simd/platform/wasm/wcn_wasm_simd128.h"
 #endif
 
 #if defined(WCN_MIPS_MSA)
-    #include "wcn_simd/platform/mips/wcn_mips_msa.h"
+#include "wcn_simd/platform/mips/wcn_mips_msa.h"
 #endif
 
 /* Include atomic operations */
@@ -105,31 +106,31 @@ extern "C" {
 
 /* Include platform-specific atomic implementations */
 #if defined(WCN_X86_SSE2)
-    #include "wcn_simd/platform/x86/wcn_x86_sse2_atomic.h"
+#include "wcn_simd/platform/x86/wcn_x86_sse2_atomic.h"
 #endif
 
 #if defined(WCN_X86_AVX2)
-    #include "wcn_simd/platform/x86/wcn_x86_avx2_atomic.h"
+#include "wcn_simd/platform/x86/wcn_x86_avx2_atomic.h"
 #endif
 
 #if defined(WCN_ARM_NEON)
-    #include "wcn_simd/platform/arm/wcn_arm_neon_atomic.h"
+#include "wcn_simd/platform/arm/wcn_arm_neon_atomic.h"
 #endif
 
 #if defined(WCN_LOONGARCH_LSX)
-    #include "wcn_simd/platform/loongarch/wcn_loongarch_lsx_atomic.h"
+#include "wcn_simd/platform/loongarch/wcn_loongarch_lsx_atomic.h"
 #endif
 
 #if defined(WCN_RISCV_RVV)
-    #include "wcn_simd/platform/riscv/wcn_riscv_rvv_atomic.h"
+#include "wcn_simd/platform/riscv/wcn_riscv_rvv_atomic.h"
 #endif
 
 #if defined(WCN_POWERPC_ALTIVEC)
-    #include "wcn_simd/platform/powerpc/wcn_powerpc_altivec_atomic.h"
+#include "wcn_simd/platform/powerpc/wcn_powerpc_altivec_atomic.h"
 #endif
 
 #if defined(WCN_WASM_SIMD128)
-    #include "wcn_simd/platform/wasm/wcn_wasm_simd128_atomic.h"
+#include "wcn_simd/platform/wasm/wcn_wasm_simd128_atomic.h"
 #endif
 
 /* ========== Library Information ========== */
@@ -139,70 +140,64 @@ extern "C" {
 #define WCN_SIMD_VERSION_PATCH 0
 
 /* Get SIMD implementation name */
-WCN_INLINE const char* wcn_simd_get_impl(void) {
-    return WCN_SIMD_IMPL;
-}
+WCN_INLINE const char *wcn_simd_get_impl(void) { return WCN_SIMD_IMPL; }
 
 /* Get SIMD vector width in bits (0 for scalable) */
-WCN_INLINE int wcn_simd_get_vector_width(void) {
-    return WCN_VECTOR_WIDTH;
-}
+WCN_INLINE int wcn_simd_get_vector_width(void) { return WCN_VECTOR_WIDTH; }
 
 /* Get version string */
-WCN_INLINE const char* wcn_simd_get_version(void) {
-    return "1.0.0";
-}
+WCN_INLINE const char *wcn_simd_get_version(void) { return "1.0.0"; }
 
 /* ========== Runtime Feature Detection ========== */
 
 typedef struct {
-    /* x86 features */
-    int has_sse2;
-    int has_sse3;
-    int has_ssse3;
-    int has_sse4_1;
-    int has_sse4_2;
-    int has_avx;
-    int has_avx2;
-    int has_avx512f;
-    int has_avx512bw;
-    int has_avx512dq;
-    int has_avx512vl;
-    int has_fma;
-    
-    /* ARM features */
-    int has_neon;
-    int has_sve;
-    int has_sve2;
-    
-    /* LoongArch features */
-    int has_lsx;
-    int has_lasx;
-    
-    /* RISC-V features */
-    int has_rvv;
-    
-    /* PowerPC features */
-    int has_altivec;
-    int has_vsx;
-    
-    /* MIPS features */
-    int has_msa;
-    
-    /* WebAssembly features */
-    int has_wasm_simd128;
-    
-    /* Atomic operation features */
-    int has_atomic_operations;
-    int has_gcc_atomic;
-    int has_msvc_atomic;
+  /* x86 features */
+  int has_sse2;
+  int has_sse3;
+  int has_ssse3;
+  int has_sse4_1;
+  int has_sse4_2;
+  int has_avx;
+  int has_avx2;
+  int has_avx512f;
+  int has_avx512bw;
+  int has_avx512dq;
+  int has_avx512vl;
+  int has_fma;
+
+  /* ARM features */
+  int has_neon;
+  int has_sve;
+  int has_sve2;
+
+  /* LoongArch features */
+  int has_lsx;
+  int has_lasx;
+
+  /* RISC-V features */
+  int has_rvv;
+
+  /* PowerPC features */
+  int has_altivec;
+  int has_vsx;
+
+  /* MIPS features */
+  int has_msa;
+
+  /* WebAssembly features */
+  int has_wasm_simd128;
+
+  /* Atomic operation features */
+  int has_atomic_operations;
+  int has_gcc_atomic;
+  int has_msvc_atomic;
 } wcn_simd_features_t;
 
 /* Initialize feature detection (call once at startup) */
 WCN_API_EXPORT void wcn_simd_init(void);
 
 /* Get detected SIMD features */
-WCN_API_EXPORT const wcn_simd_features_t* wcn_simd_get_features(void);
+WCN_API_EXPORT const wcn_simd_features_t *wcn_simd_get_features(void);
 
 /* ========== Unified Platform-Agnostic SIMD Operations ========== */
 
@@ -222,7 +217,8 @@ WCN_API_EXPORT const wcn_simd_features_t* wcn_simd_get_features(void);
 #define wcn_simd_store_i128(ptr, vec) wcn_v128i_store((ptr), (vec))
 
 /* Store 128-bit integer vector to memory (aligned) */
-#define wcn_simd_store_i128_aligned(ptr, vec) wcn_v128i_store_aligned((ptr), (vec))
+#define wcn_simd_store_i128_aligned(ptr, vec)                                  \
+  wcn_v128i_store_aligned((ptr), (vec))
 
 /* Load 128-bit float vector from memory */
 #define wcn_simd_load_f32(ptr) wcn_v128f_load(ptr)
@@ -682,7 +678,8 @@ WCN_API_EXPORT const wcn_simd_features_t* wcn_simd_get_features(void);
 #define wcn_simd_extract_i16(vec, index) wcn_v128i_extract_i16((vec), (index))
 
 /* Insert 16-bit integer (index must be compile-time constant 0-7) */
-#define wcn_simd_insert_i16(vec, val, index) wcn_v128i_insert_i16((vec), (val), (index))
+#define wcn_simd_insert_i16(vec, val, index)                                   \
+  wcn_v128i_insert_i16((vec), (val), (index))
 
 /* ========== Movemask Operations (Unified) ========== */
 
@@ -714,32 +711,42 @@ WCN_API_EXPORT const wcn_simd_features_t* wcn_simd_get_features(void);
 /* ========== Common Array Algorithms ========== */
 
 /* Vector dot product (sum of element-wise multiplication) */
-WCN_API_EXPORT float wcn_simd_dot_product_f32(const float* a, const float* b, size_t count);
+WCN_API_EXPORT float wcn_simd_dot_product_f32(const float *a, const float *b,
+                                              size_t count);
+
+WCN_API_EXPORT float
+wcn_simd_dot_product_kahan_f32(const float *a, const float *b, size_t count);
 
 /* Vector addition: c[i] = a[i] + b[i] */
-WCN_API_EXPORT void wcn_simd_add_array_f32(const float* a, const float* b, float* c, size_t count);
+WCN_API_EXPORT void wcn_simd_add_array_f32(const float *a, const float *b,
+                                           float *c, size_t count);
 
 /* Vector multiplication: c[i] = a[i] * b[i] */
-WCN_API_EXPORT void wcn_simd_mul_array_f32(const float* a, const float* b, float* c, size_t count);
+WCN_API_EXPORT void wcn_simd_mul_array_f32(const float *a, const float *b,
+                                           float *c, size_t count);
 
 /* Scalar multiplication: b[i] = a[i] * scalar */
-WCN_API_EXPORT void wcn_simd_scale_array_f32(const float* a, float scalar, float* b, size_t count);
+WCN_API_EXPORT void wcn_simd_scale_array_f32(const float *a, float scalar,
+                                             float *b, size_t count);
 
 /* FMA: c[i] = a[i] * b[i] + c[i] */
-WCN_API_EXPORT void wcn_simd_fmadd_array_f32(const float* a, const float* b, float* c, size_t count);
+WCN_API_EXPORT void wcn_simd_fmadd_array_f32(const float *a, const float *b,
+                                             float *c, size_t count);
 
 /* Find maximum value in array */
-WCN_API_EXPORT float wcn_simd_reduce_max_f32(const float* data, size_t count);
+WCN_API_EXPORT float wcn_simd_reduce_max_f32(const float *data, size_t count);
 
 /* Find minimum value in array */
-WCN_API_EXPORT float wcn_simd_reduce_min_f32(const float* data, size_t count);
+WCN_API_EXPORT float wcn_simd_reduce_min_f32(const float *data, size_t count);
 
 /* Sum all elements in array */
-WCN_API_EXPORT float wcn_simd_reduce_sum_f32(const float* data, size_t count);
+WCN_API_EXPORT float wcn_simd_reduce_sum_f32(const float *data, size_t count);
 
 /* Memory operations */
-WCN_API_EXPORT void wcn_simd_memcpy_aligned(void* dest, const void* src, size_t bytes);
-WCN_API_EXPORT void wcn_simd_memset_aligned(void* dest, int value, size_t bytes);
+WCN_API_EXPORT void wcn_simd_memcpy_aligned(void *dest, const void *src,
+                                            size_t bytes);
+WCN_API_EXPORT void wcn_simd_memset_aligned(void *dest, int value,
+                                            size_t bytes);
 
 #ifdef __cplusplus
 }
